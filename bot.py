@@ -1,3 +1,6 @@
+```python
+# -*- coding: utf-8 -*-
+
 import os
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
@@ -7,121 +10,76 @@ from telegram.ext import (
     ContextTypes,
 )
 
-
 # ============================================================
 # APEX QUANT TELEGRAM BOT
-# VersiÃ³n 1.1
+# Versión 1.0
 # ============================================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
+PLAN_RISK_NOTICE = """
+⚠️ *AVISO IMPORTANTE*
+
+Los porcentajes mostrados son *estimaciones* y no representan una promesa ni una garantía de rendimiento.
+
+El rendimiento real puede ser inferior, superior o negativo según las condiciones del mercado. El capital está sujeto a riesgo y pueden producirse pérdidas.
+"""
+
 
 # ------------------------------------------------------------
-# MENÃš PRINCIPAL
+# MENÚ PRINCIPAL
 # ------------------------------------------------------------
 
 def main_menu():
     keyboard = [
         [
-            InlineKeyboardButton("ðŸ“Š Mercados", callback_data="markets"),
-            InlineKeyboardButton("ðŸ“¡ SeÃ±ales", callback_data="signals"),
+            InlineKeyboardButton("📊 Mercados", callback_data="markets"),
+            InlineKeyboardButton("📡 Señales", callback_data="signals"),
         ],
         [
-            InlineKeyboardButton("ðŸ’° Planes", callback_data="plans"),
-            InlineKeyboardButton("ðŸ‘¥ Referidos", callback_data="referrals"),
+            InlineKeyboardButton("💰 Planes", callback_data="plans"),
+            InlineKeyboardButton("👥 Referidos", callback_data="referrals"),
         ],
         [
-            InlineKeyboardButton("ðŸŒ Idioma", callback_data="language"),
-            InlineKeyboardButton("âš™ï¸ ConfiguraciÃ³n", callback_data="settings"),
+            InlineKeyboardButton("🌐 Idioma", callback_data="language"),
+            InlineKeyboardButton("⚙️ Configuración", callback_data="settings"),
         ],
     ]
-
     return InlineKeyboardMarkup(keyboard)
 
 
 # ------------------------------------------------------------
-# MENÃš DE MERCADOS
+# MENÚ DE MERCADOS
 # ------------------------------------------------------------
 
 def markets_menu():
     keyboard = [
-        [
-            InlineKeyboardButton(
-                "ðŸ—“ï¸ Calendario econÃ³mico",
-                callback_data="calendar",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "ðŸ”´ Noticias de alto impacto",
-                callback_data="high_impact",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "ðŸ’± Noticias por moneda",
-                callback_data="currencies",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "âš ï¸ Riesgo de noticias",
-                callback_data="news_risk",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "ðŸ“ˆ AnÃ¡lisis del dÃ­a",
-                callback_data="daily_analysis",
-            )
-        ],
-        [
-            InlineKeyboardButton("â¬…ï¸ Volver", callback_data="main_menu")
-        ],
+        [InlineKeyboardButton("🗓️ Calendario económico", callback_data="calendar")],
+        [InlineKeyboardButton("🔴 Noticias de alto impacto", callback_data="high_impact")],
+        [InlineKeyboardButton("💱 Noticias por moneda", callback_data="currencies")],
+        [InlineKeyboardButton("⚠️ Riesgo de noticias", callback_data="news_risk")],
+        [InlineKeyboardButton("📈 Análisis del día", callback_data="daily_analysis")],
+        [InlineKeyboardButton("⬅️ Volver", callback_data="main_menu")],
     ]
-
     return InlineKeyboardMarkup(keyboard)
 
 
 # ------------------------------------------------------------
-# CALENDARIO ECONÃ“MICO
+# CALENDARIO ECONÓMICO
 # ------------------------------------------------------------
 
 def calendar_menu():
     keyboard = [
         [
-            InlineKeyboardButton("ðŸ“… Hoy", callback_data="calendar_today"),
-            InlineKeyboardButton("ðŸ“… MaÃ±ana", callback_data="calendar_tomorrow"),
+            InlineKeyboardButton("📅 Hoy", callback_data="calendar_today"),
+            InlineKeyboardButton("📅 Mañana", callback_data="calendar_tomorrow"),
         ],
-        [
-            InlineKeyboardButton(
-                "ðŸ“† Esta semana",
-                callback_data="calendar_week",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "ðŸ”´ Alto impacto",
-                callback_data="high_impact",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "ðŸ’± Por moneda",
-                callback_data="currencies",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "ðŸ”„ Actualizar",
-                callback_data="calendar",
-            )
-        ],
-        [
-            InlineKeyboardButton("â¬…ï¸ Volver", callback_data="markets")
-        ],
+        [InlineKeyboardButton("📆 Esta semana", callback_data="calendar_week")],
+        [InlineKeyboardButton("🔴 Alto impacto", callback_data="high_impact")],
+        [InlineKeyboardButton("💱 Por moneda", callback_data="currencies")],
+        [InlineKeyboardButton("🔄 Actualizar", callback_data="calendar")],
+        [InlineKeyboardButton("⬅️ Volver", callback_data="markets")],
     ]
-
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -132,26 +90,23 @@ def calendar_menu():
 def currencies_menu():
     keyboard = [
         [
-            InlineKeyboardButton("ðŸ‡ºðŸ‡¸ USD", callback_data="currency_USD"),
-            InlineKeyboardButton("ðŸ‡ªðŸ‡º EUR", callback_data="currency_EUR"),
+            InlineKeyboardButton("🇺🇸 USD", callback_data="currency_USD"),
+            InlineKeyboardButton("🇪🇺 EUR", callback_data="currency_EUR"),
         ],
         [
-            InlineKeyboardButton("ðŸ‡¬ðŸ‡§ GBP", callback_data="currency_GBP"),
-            InlineKeyboardButton("ðŸ‡¯ðŸ‡µ JPY", callback_data="currency_JPY"),
+            InlineKeyboardButton("🇬🇧 GBP", callback_data="currency_GBP"),
+            InlineKeyboardButton("🇯🇵 JPY", callback_data="currency_JPY"),
         ],
         [
-            InlineKeyboardButton("ðŸ‡¨ðŸ‡­ CHF", callback_data="currency_CHF"),
-            InlineKeyboardButton("ðŸ‡¨ðŸ‡¦ CAD", callback_data="currency_CAD"),
+            InlineKeyboardButton("🇨🇭 CHF", callback_data="currency_CHF"),
+            InlineKeyboardButton("🇨🇦 CAD", callback_data="currency_CAD"),
         ],
         [
-            InlineKeyboardButton("ðŸ‡¦ðŸ‡º AUD", callback_data="currency_AUD"),
-            InlineKeyboardButton("ðŸ‡³ðŸ‡¿ NZD", callback_data="currency_NZD"),
+            InlineKeyboardButton("🇦🇺 AUD", callback_data="currency_AUD"),
+            InlineKeyboardButton("🇳🇿 NZD", callback_data="currency_NZD"),
         ],
-        [
-            InlineKeyboardButton("â¬…ï¸ Volver", callback_data="markets")
-        ],
+        [InlineKeyboardButton("⬅️ Volver", callback_data="markets")],
     ]
-
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -161,35 +116,12 @@ def currencies_menu():
 
 def plans_menu():
     keyboard = [
-        [
-            InlineKeyboardButton(
-                "ðŸ“… Plan 30 dÃ­as â€” 8% estimado",
-                callback_data="plan_30",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "ðŸ“… Plan 90 dÃ­as â€” 24% estimado",
-                callback_data="plan_90",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "ðŸ“… Plan 180 dÃ­as â€” 48% estimado",
-                callback_data="plan_180",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "ðŸ“… Plan 360 dÃ­as â€” 96% estimado",
-                callback_data="plan_360",
-            )
-        ],
-        [
-            InlineKeyboardButton("â¬…ï¸ Volver", callback_data="main_menu")
-        ],
+        [InlineKeyboardButton("📅 Plan 30 días — 8% estimado", callback_data="plan_30")],
+        [InlineKeyboardButton("📅 Plan 90 días — 24% estimado", callback_data="plan_90")],
+        [InlineKeyboardButton("📅 Plan 180 días — 48% estimado", callback_data="plan_180")],
+        [InlineKeyboardButton("📅 Plan 360 días — 96% estimado", callback_data="plan_360")],
+        [InlineKeyboardButton("⬅️ Volver", callback_data="main_menu")],
     ]
-
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -200,40 +132,24 @@ def plans_menu():
 def language_menu():
     keyboard = [
         [
-            InlineKeyboardButton("ðŸ‡ªðŸ‡¸ EspaÃ±ol", callback_data="lang_es"),
-            InlineKeyboardButton("ðŸ‡ºðŸ‡¸ English", callback_data="lang_en"),
+            InlineKeyboardButton("🇪🇸 Español", callback_data="lang_es"),
+            InlineKeyboardButton("🇺🇸 English", callback_data="lang_en"),
         ],
-        [
-            InlineKeyboardButton("â¬…ï¸ Volver", callback_data="main_menu")
-        ],
+        [InlineKeyboardButton("⬅️ Volver", callback_data="main_menu")],
     ]
-
     return InlineKeyboardMarkup(keyboard)
 
 
 # ------------------------------------------------------------
-# CONFIGURACIÃ“N
+# CONFIGURACIÓN
 # ------------------------------------------------------------
 
 def settings_menu():
     keyboard = [
-        [
-            InlineKeyboardButton(
-                "ðŸ”” Notificaciones",
-                callback_data="notifications",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "âš™ï¸ Preferencias",
-                callback_data="preferences",
-            )
-        ],
-        [
-            InlineKeyboardButton("â¬…ï¸ Volver", callback_data="main_menu")
-        ],
+        [InlineKeyboardButton("🔔 Notificaciones", callback_data="notifications")],
+        [InlineKeyboardButton("⚙️ Preferencias", callback_data="preferences")],
+        [InlineKeyboardButton("⬅️ Volver", callback_data="main_menu")],
     ]
-
     return InlineKeyboardMarkup(keyboard)
 
 
@@ -242,28 +158,15 @@ def settings_menu():
 # ------------------------------------------------------------
 
 WELCOME_MESSAGE = """
-ðŸš€ *Bienvenido a Apex Quant*
+🚀 *Bienvenido a Apex Quant*
 
-Tu centro de anÃ¡lisis y herramientas para los mercados financieros.
+Tu centro de análisis y herramientas para los mercados financieros.
 
-Desde aquÃ­ podrÃ¡s consultar el calendario econÃ³mico, identificar eventos de alto impacto, recibir informaciÃ³n de mercado y acceder a las diferentes funciones de Apex Quant.
+Desde aquí podrás consultar el calendario económico, identificar eventos de alto impacto, recibir información de mercado y acceder a las diferentes funciones de Apex Quant.
 
-âš ï¸ *Aviso de riesgo:* Los mercados financieros implican riesgo y los resultados no estÃ¡n garantizados. La informaciÃ³n proporcionada por Apex Quant tiene carÃ¡cter informativo y educativo y no constituye una garantÃ­a de resultados.
+⚠️ *Aviso de riesgo:* Los mercados financieros implican riesgo y los resultados no están garantizados. La información proporcionada por Apex Quant tiene carácter informativo y educativo y no constituye una garantía de resultados.
 
-*Selecciona una opciÃ³n para comenzar:*
-"""
-
-
-# ------------------------------------------------------------
-# AVISO DE PLANES
-# ------------------------------------------------------------
-
-PLAN_RISK_NOTICE = """
-âš ï¸ *AVISO IMPORTANTE*
-
-Los porcentajes mostrados son *estimaciones* y no representan una promesa ni una garantÃ­a de rendimiento.
-
-El rendimiento real puede ser inferior, superior o negativo segÃºn las condiciones del mercado. El capital estÃ¡ sujeto a riesgo y pueden producirse pÃ©rdidas.
+*Selecciona una opción para comenzar:*
 """
 
 
@@ -283,17 +186,14 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # MANEJO DE BOTONES
 # ------------------------------------------------------------
 
-async def button_handler(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     data = query.data
 
     # -------------------------
-    # MENÃš PRINCIPAL
+    # MENÚ PRINCIPAL
     # -------------------------
 
     if data == "main_menu":
@@ -309,7 +209,7 @@ async def button_handler(
 
     elif data == "markets":
         await query.edit_message_text(
-            "ðŸ“Š *MERCADOS*\n\nSelecciona una opciÃ³n:",
+            "📊 *MERCADOS*\n\nSelecciona una opción:",
             parse_mode="Markdown",
             reply_markup=markets_menu(),
         )
@@ -320,13 +220,12 @@ async def button_handler(
 
     elif data == "calendar":
         text = """
-ðŸ—“ï¸ *CALENDARIO ECONÃ“MICO*
+🗓️ *CALENDARIO ECONÓMICO*
 
-Selecciona el perÃ­odo que deseas consultar.
+Selecciona el período que deseas consultar.
 
-ðŸ“Œ PrÃ³ximamente este mÃ³dulo se conectarÃ¡ a datos econÃ³micos en tiempo real.
+📌 Próximamente este módulo se conectará a datos económicos en tiempo real.
 """
-
         await query.edit_message_text(
             text,
             parse_mode="Markdown",
@@ -340,42 +239,42 @@ Selecciona el perÃ­odo que deseas consultar.
     elif data == "calendar_today":
         await query.edit_message_text(
             """
-ðŸ“… *CALENDARIO â€” HOY*
+📅 *CALENDARIO — HOY*
 
-ðŸ”´ PrÃ³ximamente mostraremos aquÃ­ los eventos econÃ³micos del dÃ­a.
+🔴 Próximamente mostraremos aquí los eventos económicos del día.
 
-Los eventos serÃ¡n clasificados por:
+Los eventos serán clasificados por:
 
-ðŸ”´ Alto impacto
-ðŸŸ  Impacto medio
-ðŸŸ¢ Bajo impacto
+🔴 Alto impacto
+🟠 Impacto medio
+🟢 Bajo impacto
 
-âš ï¸ Los horarios dependerÃ¡n de la zona horaria configurada.
+⚠️ Los horarios dependerán de la zona horaria configurada.
 """,
             parse_mode="Markdown",
             reply_markup=calendar_menu(),
         )
 
     # -------------------------
-    # CALENDARIO MAÃ‘ANA
+    # CALENDARIO MAÑANA
     # -------------------------
 
     elif data == "calendar_tomorrow":
         await query.edit_message_text(
             """
-ðŸ“… *CALENDARIO â€” MAÃ‘ANA*
+📅 *CALENDARIO — MAÑANA*
 
-ðŸ”´ PrÃ³ximamente mostraremos aquÃ­ los eventos econÃ³micos de maÃ±ana.
+🔴 Próximamente mostraremos aquí los eventos económicos de mañana.
 
-Cada evento incluirÃ¡:
+Cada evento incluirá:
 
-â° Hora
-ðŸŒŽ PaÃ­s
-ðŸ’± Moneda
-ðŸ“Š PrevisiÃ³n
-ðŸ“‰ Anterior
-ðŸ”´ Nivel de impacto
-ðŸŽ¯ Pares potencialmente afectados
+⏰ Hora
+🌎 País
+💱 Moneda
+📊 Previsión
+📉 Anterior
+🔴 Nivel de impacto
+🎯 Pares potencialmente afectados
 """,
             parse_mode="Markdown",
             reply_markup=calendar_menu(),
@@ -388,15 +287,15 @@ Cada evento incluirÃ¡:
     elif data == "calendar_week":
         await query.edit_message_text(
             """
-ðŸ“† *CALENDARIO â€” ESTA SEMANA*
+📆 *CALENDARIO — ESTA SEMANA*
 
-AquÃ­ aparecerÃ¡n los principales eventos econÃ³micos de la semana.
+Aquí aparecerán los principales eventos económicos de la semana.
 
-ðŸ”´ Alto impacto
-ðŸŸ  Impacto medio
-ðŸŸ¢ Bajo impacto
+🔴 Alto impacto
+🟠 Impacto medio
+🟢 Bajo impacto
 
-El calendario serÃ¡ conectado posteriormente a datos actualizados.
+El calendario será conectado posteriormente a datos actualizados.
 """,
             parse_mode="Markdown",
             reply_markup=calendar_menu(),
@@ -409,26 +308,26 @@ El calendario serÃ¡ conectado posteriormente a datos actualizados.
     elif data == "high_impact":
         await query.edit_message_text(
             """
-ðŸ”´ *NOTICIAS DE ALTO IMPACTO*
+🔴 *NOTICIAS DE ALTO IMPACTO*
 
-Esta secciÃ³n mostrarÃ¡ exclusivamente eventos con potencial de generar una elevada volatilidad.
+Esta sección mostrará exclusivamente eventos con potencial de generar una elevada volatilidad.
 
 Ejemplo:
 
-ðŸ‡ºðŸ‡¸ USD
-ðŸ“Š DecisiÃ³n de tipos
-â° Hora del evento
-ðŸŽ¯ EUR/USD â€¢ GBP/USD â€¢ USD/JPY
+🇺🇸 USD
+📊 Decisión de tipos
+⏰ Hora del evento
+🎯 EUR/USD • GBP/USD • USD/JPY
 
-ðŸ‡¬ðŸ‡§ GBP
-ðŸ“Š DecisiÃ³n del BoE
-ðŸŽ¯ GBP/USD â€¢ GBP/JPY
+🇬🇧 GBP
+📊 Decisión del BoE
+🎯 GBP/USD • GBP/JPY
 
-ðŸ‡¯ðŸ‡µ JPY
-ðŸ“Š DecisiÃ³n del BoJ
-ðŸŽ¯ GBP/JPY â€¢ USD/JPY
+🇯🇵 JPY
+📊 Decisión del BoJ
+🎯 GBP/JPY • USD/JPY
 
-âš ï¸ Una noticia de alto impacto puede provocar movimientos rÃ¡pidos, spreads elevados y slippage.
+⚠️ Una noticia de alto impacto puede provocar movimientos rápidos, spreads elevados y slippage.
 """,
             parse_mode="Markdown",
             reply_markup=calendar_menu(),
@@ -440,7 +339,7 @@ Ejemplo:
 
     elif data == "currencies":
         await query.edit_message_text(
-            "ðŸ’± *NOTICIAS POR MONEDA*\n\nSelecciona una moneda:",
+            "💱 *NOTICIAS POR MONEDA*\n\nSelecciona una moneda:",
             parse_mode="Markdown",
             reply_markup=currencies_menu(),
         )
@@ -451,16 +350,15 @@ Ejemplo:
 
     elif data.startswith("currency_"):
         currency = data.replace("currency_", "")
-
         await query.edit_message_text(
             f"""
-ðŸ’± *NOTICIAS â€” {currency}*
+💱 *NOTICIAS — {currency}*
 
-AquÃ­ aparecerÃ¡n prÃ³ximamente los eventos econÃ³micos relacionados con {currency}.
+Aquí aparecerán próximamente los eventos económicos relacionados con {currency}.
 
-TambiÃ©n mostraremos los principales pares afectados y el nivel de impacto.
+También mostraremos los principales pares afectados y el nivel de impacto.
 
-âš ï¸ La reacciÃ³n del mercado no estÃ¡ garantizada y depende del contexto econÃ³mico y de las expectativas del mercado.
+⚠️ La reacción del mercado no está garantizada y depende del contexto económico y de las expectativas del mercado.
 """,
             parse_mode="Markdown",
             reply_markup=currencies_menu(),
@@ -473,79 +371,79 @@ TambiÃ©n mostraremos los principales pares afectados y el nivel de impacto.
     elif data == "news_risk":
         await query.edit_message_text(
             """
-âš ï¸ *RIESGO DE NOTICIAS*
+⚠️ *RIESGO DE NOTICIAS*
 
-ðŸ”´ *ALTO*
-Eventos importantes prÃ³ximos. Se recomienda extremar la precauciÃ³n.
+🔴 *ALTO*
+Eventos importantes próximos. Se recomienda extremar la precaución.
 
-ðŸŸ  *MEDIO*
+🟠 *MEDIO*
 Puede producirse volatilidad moderada.
 
-ðŸŸ¢ *BAJO*
-No se identifican eventos relevantes prÃ³ximos.
+🟢 *BAJO*
+No se identifican eventos relevantes próximos.
 
-ðŸ“Œ Apex Quant utilizarÃ¡ esta informaciÃ³n como parte del contexto de mercado.
+📌 Apex Quant utilizará esta información como parte del contexto de mercado.
 
-âš ï¸ La clasificaciÃ³n no garantiza la direcciÃ³n ni la magnitud del movimiento.
+⚠️ La clasificación no garantiza la dirección ni la magnitud del movimiento.
 """,
             parse_mode="Markdown",
             reply_markup=markets_menu(),
         )
 
     # -------------------------
-    # ANÃLISIS DEL DÃA
+    # ANÁLISIS DEL DÍA
     # -------------------------
 
     elif data == "daily_analysis":
         await query.edit_message_text(
             """
-ðŸ“ˆ *ANÃLISIS DEL DÃA*
+📈 *ANÁLISIS DEL DÍA*
 
-PrÃ³ximamente esta secciÃ³n combinarÃ¡:
+Próximamente esta sección combinará:
 
-ðŸ—“ï¸ Calendario econÃ³mico
-ðŸ“Š Noticias fundamentales
-ðŸ“ˆ Estructura del mercado
-ðŸ”Ž BOS
-ðŸ§© FVG
-ðŸ’§ Liquidez
-ðŸ“Š Volumen
-ðŸ“‰ RSI
+🗓️ Calendario económico
+📊 Noticias fundamentales
+📈 Estructura del mercado
+🔎 BOS
+🧩 FVG
+💧 Liquidez
+📊 Volumen
+📉 RSI
 
-ðŸŽ¯ Pares principales:
+🎯 Pares principales:
 
 EUR/USD
 GBP/USD
 GBP/JPY
 
-âš ï¸ El anÃ¡lisis no garantiza resultados.
+⚠️ El análisis no garantiza resultados.
 """,
             parse_mode="Markdown",
             reply_markup=markets_menu(),
         )
 
     # -------------------------
-    # SEÃ‘ALES
+    # SEÑALES
     # -------------------------
 
     elif data == "signals":
         await query.edit_message_text(
             """
-ðŸ“¡ *SEÃ‘ALES APEX QUANT*
+📡 *SEÑALES APEX QUANT*
 
-PrÃ³ximamente esta secciÃ³n permitirÃ¡ consultar las seÃ±ales disponibles.
+Próximamente esta sección permitirá consultar las señales disponibles.
 
-Cada seÃ±al podrÃ¡ incluir:
+Cada señal podrá incluir:
 
-ðŸ’± Par
-ðŸ“ˆ DirecciÃ³n
-ðŸŽ¯ Entrada
-ðŸ›‘ Stop Loss
-ðŸ’° Take Profit
-ðŸ“Š RelaciÃ³n R:R
-âš ï¸ Nivel de riesgo
+💱 Par
+📈 Dirección
+🎯 Entrada
+🛑 Stop Loss
+💰 Take Profit
+📊 Relación R:R
+⚠️ Nivel de riesgo
 
-âš ï¸ Las seÃ±ales no garantizan resultados. El trading implica riesgo.
+⚠️ Las señales no garantizan resultados. El trading implica riesgo.
 """,
             parse_mode="Markdown",
             reply_markup=main_menu(),
@@ -558,15 +456,15 @@ Cada seÃ±al podrÃ¡ incluir:
     elif data == "plans":
         await query.edit_message_text(
             f"""
-ðŸ’° *PLANES APEX QUANT*
+💰 *PLANES APEX QUANT*
 
-Selecciona un plan para consultar sus caracterÃ­sticas.
+Selecciona un plan para consultar sus características.
 
-ðŸ“Œ *Planes disponibles:*
-â€¢ 30 dÃ­as â€” 8% estimado
-â€¢ 90 dÃ­as â€” 24% estimado
-â€¢ 180 dÃ­as â€” 48% estimado
-â€¢ 360 dÃ­as â€” 96% estimado
+📌 *Planes disponibles:*
+• 30 días — 8% estimado
+• 90 días — 24% estimado
+• 180 días — 48% estimado
+• 360 días — 96% estimado
 
 {PLAN_RISK_NOTICE}
 """,
@@ -581,9 +479,9 @@ Selecciona un plan para consultar sus caracterÃ­sticas.
     elif data == "plan_30":
         await query.edit_message_text(
             f"""
-ðŸ“… *PLAN 30 DÃAS*
+📅 *PLAN 30 DÍAS*
 
-ðŸ“Š Rendimiento estimado: *8%*
+📊 Rendimiento estimado: *8%*
 
 {PLAN_RISK_NOTICE}
 """,
@@ -598,9 +496,9 @@ Selecciona un plan para consultar sus caracterÃ­sticas.
     elif data == "plan_90":
         await query.edit_message_text(
             f"""
-ðŸ“… *PLAN 90 DÃAS*
+📅 *PLAN 90 DÍAS*
 
-ðŸ“Š Rendimiento estimado: *24%*
+📊 Rendimiento estimado: *24%*
 
 {PLAN_RISK_NOTICE}
 """,
@@ -615,9 +513,9 @@ Selecciona un plan para consultar sus caracterÃ­sticas.
     elif data == "plan_180":
         await query.edit_message_text(
             f"""
-ðŸ“… *PLAN 180 DÃAS*
+📅 *PLAN 180 DÍAS*
 
-ðŸ“Š Rendimiento estimado: *48%*
+📊 Rendimiento estimado: *48%*
 
 {PLAN_RISK_NOTICE}
 """,
@@ -632,11 +530,11 @@ Selecciona un plan para consultar sus caracterÃ­sticas.
     elif data == "plan_360":
         await query.edit_message_text(
             f"""
-ðŸ“… *PLAN 360 DÃAS*
+📅 *PLAN 360 DÍAS*
 
-ðŸ“Š Rendimiento estimado: *96%*
+📊 Rendimiento estimado: *96%*
 
-ðŸ“Œ Este porcentaje corresponde a una referencia anual estimada equivalente a un promedio simple de aproximadamente 8% mensual; no implica que el rendimiento se produzca de forma uniforme cada mes.
+📌 Este porcentaje corresponde a una referencia anual estimada equivalente a un promedio simple de aproximadamente 8% mensual; no implica que el rendimiento se produzca de forma uniforme cada mes.
 
 {PLAN_RISK_NOTICE}
 """,
@@ -651,18 +549,18 @@ Selecciona un plan para consultar sus caracterÃ­sticas.
     elif data == "referrals":
         await query.edit_message_text(
             """
-ðŸ‘¥ *PROGRAMA DE REFERIDOS*
+👥 *PROGRAMA DE REFERIDOS*
 
 Invita a otras personas a conocer Apex Quant.
 
-ðŸ”— PrÃ³ximamente cada usuario tendrÃ¡ su enlace personal de invitaciÃ³n.
+🔗 Próximamente cada usuario tendrá su enlace personal de invitación.
 
-ðŸ“Š TambiÃ©n podremos mostrar:
-â€¢ Invitaciones
-â€¢ Usuarios registrados
-â€¢ Recompensas disponibles
+📊 También podremos mostrar:
+• Invitaciones
+• Usuarios registrados
+• Recompensas disponibles
 
-âš ï¸ Las condiciones del programa estarÃ¡n sujetas a las reglas oficiales de Apex Quant.
+⚠️ Las condiciones del programa estarán sujetas a las reglas oficiales de Apex Quant.
 """,
             parse_mode="Markdown",
             reply_markup=main_menu(),
@@ -674,45 +572,41 @@ Invita a otras personas a conocer Apex Quant.
 
     elif data == "language":
         await query.edit_message_text(
-            "ðŸŒ *SELECCIONA TU IDIOMA*",
+            "🌐 *SELECCIONA TU IDIOMA*",
             parse_mode="Markdown",
             reply_markup=language_menu(),
         )
 
     elif data == "lang_es":
         await query.edit_message_text(
-            "ðŸ‡ªðŸ‡¸ *EspaÃ±ol seleccionado.*\n\nEl idioma espaÃ±ol ya estÃ¡ activo.",
+            "🇪🇸 *Español seleccionado*",
             parse_mode="Markdown",
             reply_markup=language_menu(),
         )
 
     elif data == "lang_en":
         await query.edit_message_text(
-            "ðŸ‡ºðŸ‡¸ *English selected.*\n\nEnglish support will be expanded in a future update.",
+            "🇺🇸 *English selected*",
             parse_mode="Markdown",
             reply_markup=language_menu(),
         )
 
     # -------------------------
-    # CONFIGURACIÃ“N
+    # CONFIGURACIÓN
     # -------------------------
 
     elif data == "settings":
         await query.edit_message_text(
-            "âš™ï¸ *CONFIGURACIÃ“N*\n\nSelecciona una opciÃ³n:",
+            "⚙️ *CONFIGURACIÓN*\n\nSelecciona una opción:",
             parse_mode="Markdown",
             reply_markup=settings_menu(),
         )
 
     elif data == "notifications":
-        await query.answer(
-            "ðŸ”” Las notificaciones se configurarÃ¡n prÃ³ximamente."
-        )
+        await query.answer("🔔 Las notificaciones se configurarán próximamente.")
 
     elif data == "preferences":
-        await query.answer(
-            "âš™ï¸ Las preferencias se configurarÃ¡n prÃ³ximamente."
-        )
+        await query.answer("⚙️ Las preferencias se configurarán próximamente.")
 
 
 # ------------------------------------------------------------
@@ -722,21 +616,20 @@ Invita a otras personas a conocer Apex Quant.
 def main():
     if not BOT_TOKEN:
         raise ValueError(
-            "No se encontrÃ³ BOT_TOKEN. "
+            "No se encontró BOT_TOKEN. "
             "Configura la variable de entorno BOT_TOKEN."
         )
 
     application = Application.builder().token(BOT_TOKEN).build()
 
     application.add_handler(CommandHandler("start", start))
-    application.add_handler(
-        CallbackQueryHandler(button_handler)
-    )
+    application.add_handler(CallbackQueryHandler(button_handler))
 
-    print("ðŸš€ Apex Quant Bot iniciado correctamente.")
+    print("🚀 Apex Quant Bot iniciado correctamente.")
 
     application.run_polling()
 
 
 if __name__ == "__main__":
     main()
+```
