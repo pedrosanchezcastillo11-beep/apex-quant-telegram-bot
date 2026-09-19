@@ -775,6 +775,22 @@ def event_matches_currency(event, currency):
         [],
     )
 
+    # Comprobar primero posibles campos de moneda
+    # que pueda devolver la API.
+    currency_fields = [
+        event.get("currency"),
+        event.get("currency_code"),
+        event.get("curr"),
+        event.get("ccy"),
+    ]
+
+    for value in currency_fields:
+        if value:
+            if str(value).upper() == currency.upper():
+                return True
+
+    # Mantener el filtro actual por país,
+    # institución y descripción del evento.
     searchable = " ".join(
         [
             str(event.get("name", "")),
@@ -788,6 +804,7 @@ def event_matches_currency(event, currency):
             return True
 
     return False
+
 
 
 async def currency_events(
