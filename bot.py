@@ -1027,15 +1027,31 @@ async def show_plans(query):
 # ============================================================
 
 async def show_referrals(query):
+    user = query.from_user
+
+    telegram_id = user.id
+
+    invite_link = (
+        f"https://t.me/ApexQuantFXBot?start=ref_{telegram_id}"
+    )
+
     text = (
-        "👥 *Programa de referidos*\n\n"
-        "Invita a otras personas a conocer Apex Quant.\n\n"
-        "Tu enlace personal de invitación y las "
-        "condiciones del programa se habilitarán "
-        "en una próxima versión.\n\n"
-        "El sistema será diseñado para que las "
-        "recompensas y comisiones sean claras "
-        "y sostenibles."
+        "👥 *Programa de referidos Apex Quant*\n\n"
+        "Invita a otras personas a conocer Apex Quant "
+        "utilizando tu enlace personal.\n\n"
+        "🔗 *Tu enlace personal:*\n"
+        f"`{invite_link}`\n\n"
+        "🆔 *Tu ID de Telegram:* "
+        f"`{telegram_id}`\n\n"
+        "👥 *Referidos registrados:* 0\n\n"
+        "📊 Cada usuario tendrá un identificador único "
+        "basado en su cuenta de Telegram.\n\n"
+        "🔐 Esto permitirá posteriormente evitar "
+        "referidos duplicados y detectar intentos "
+        "de auto-referencia.\n\n"
+        "⚠️ Las condiciones, comisiones y recompensas "
+        "se establecerán antes de activar el programa "
+        "comercial."
     )
 
     await query.edit_message_text(
