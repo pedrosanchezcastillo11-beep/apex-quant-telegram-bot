@@ -914,12 +914,22 @@ async def show_daily_analysis(query):
         "• EUR/USD\n"
         "• GBP/USD\n"
         "• GBP/JPY\n\n"
-        "⏱️ Marcos utilizados:\n"
-        "H1 • M15 • M3\n\n"
+        "⏱️ *Marcos de análisis:*\n"
+        "• H4 — Dirección\n"
+        "• H1 — Liquidez y estructura\n"
+        "• M5 — Entrada\n\n"
         "⚠️ El análisis es informativo. "
         "Ninguna configuración técnica garantiza "
         "una operación ganadora."
     )
+
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=back_main_menu(),
+    )
+```
+
 
     await query.edit_message_text(
         text,
