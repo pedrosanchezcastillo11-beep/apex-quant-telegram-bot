@@ -928,7 +928,6 @@ async def show_daily_analysis(query):
         parse_mode="Markdown",
         reply_markup=back_main_menu(),
     )
-```
 
 
     await query.edit_message_text(
