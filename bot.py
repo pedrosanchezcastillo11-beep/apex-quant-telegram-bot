@@ -27,6 +27,186 @@ if not BOT_TOKEN:
     raise RuntimeError("Falta la variable de entorno BOT_TOKEN")
 
 
+# ============================================================
+# REFERIDOS — ALMACENAMIENTO
+# ============================================================
+
+REFERRALS_FILE = "referrals.json"
+
+
+def load_referrals():
+    """Carga los datos de referidos desde el archivo JSON."""
+    try:
+        if not os.path.exists(REFERRALS_FILE):
+            return {
+                "users": {},
+                "referrals": {}
+            }
+
+        with open(REFERRALS_FILE, "r", encoding="utf-8") as file:
+            data = json.load(file)
+
+        if not isinstance(data, dict):
+            raise ValueError("Formato de referidos inválido")
+
+        data.setdefault("users", {})
+        data.setdefault("referrals", {})
+
+        return data
+
+    except Exception as error:
+        logger.error("Error cargando referidos: %s", error)
+        return {
+            "users": {},
+            "referrals": {}
+        }
+
+
+def save_referrals(data):
+    """Guarda los datos de referidos en el archivo JSON."""
+    try:
+        with open(REFERRALS_FILE, "w", encoding="utf-8") as file:
+            json.dump(data, file, ensure_ascii=False, indent=2)
+    except Exception as error:
+        logger.error("Error guardando referidos: %s", error)
+
+
+def register_user(user):
+    """Registra un usuario por su Telegram ID."""
+    if not user:
+        return
+
+    data = load_referrals()
+    user_id = str(user.id)
+
+    if user_id not in data["users"]:
+        data["users"][user_id] = {
+            "telegram_id": user.id,
+            "username": user.username or "",
+            "first_name": user.first_name or "",
+            "referred_by": None
+        }
+        data["referrals"].setdefault(user_id, [])
+
+    else:
+        # Actualizar datos básicos sin modificar el referente.
+        data["users"][user_id]["username"] = user.username or ""
+        data["users"][user_id]["first_name"] = user.first_name or ""
+        data["referrals"].setdefault(user_id, [])
+
+    save_referrals(data)
+    return data
+
+
+def process_referral(user, start_parameter):
+    """
+    Procesa un enlace del tipo:
+    /start ref_123456789
+
+    Devuelve:
+        True  -> referido registrado correctamente
+        False -> no se registró
+    """
+    if not user or not start_parameter:
+        return False
+
+    parameter = str(start_parameter).strip()
+
+    if not parameter.startswith("ref_"):
+        return False
+
+    referrer_id = parameter[4:].strip()
+
+    if not referrer_id.isdigit():
+        logger.warning("Código de referido inválido: %s", parameter)
+        return False
+
+    user_id = str(user.id)
+
+    # No permitir auto-referencia.
+    if referrer_id == user_id:
+        logger.info(
+            "Auto-referencia bloqueada para Telegram ID %s",
+            user_id
+        )
+        return False
+
+    data = load_referrals()
+
+    # Registrar al usuario que acaba de iniciar.
+    if user_id not in data["users"]:
+        data["users"][user_id] = {
+            "telegram_id": user.id,
+            "username": user.username or "",
+            "first_name": user.first_name or "",
+            "referred_by": None
+        }
+    else:
+        data["users"][user_id]["username"] = user.username or ""
+        data["users"][user_id]["first_name"] = user.first_name or ""
+
+    data["referrals"].setdefault(user_id, [])
+
+    # El referente debe existir en nuestro registro.
+    if referrer_id not in data["users"]:
+        logger.warning(
+            "Referente %s no está registrado. No se asigna referido.",
+            referrer_id
+        )
+        save_referrals(data)
+        return False
+
+    # Una cuenta solamente puede tener un referente.
+    if data["users"][user_id].get("referred_by"):
+        logger.info(
+            "Usuario %s ya tiene referente %s. No se cambia.",
+            user_id,
+            data["users"][user_id]["referred_by"]
+        )
+        save_referrals(data)
+        return False
+
+    # Evitar duplicados.
+    data["referrals"].setdefault(referrer_id, [])
+
+    if user_id in data["referrals"][referrer_id]:
+        logger.info(
+            "Usuario %s ya está registrado como referido de %s.",
+            user_id,
+            referrer_id
+        )
+
+        data["users"][user_id]["referred_by"] = referrer_id
+
+        save_referrals(data)
+        return False
+
+    data["referrals"][referrer_id].append(user_id)
+    data["users"][user_id]["referred_by"] = referrer_id
+
+    save_referrals(data)
+
+    logger.info(
+        "Nuevo referido registrado: %s -> %s",
+        referrer_id,
+        user_id
+    )
+
+    return True
+
+
+def get_referral_count(user_id):
+    """Devuelve el número real de referidos de un usuario."""
+    data = load_referrals()
+
+    return len(
+        data["referrals"].get(
+            str(user_id),
+            []
+        )
+    )
+
+
 FINANCE_CALENDAR_BASE = (
     "https://www.financecalendar.com/wp-json/fc/v1"
 )
@@ -307,10 +487,7 @@ def week_dates():
 
     sunday = monday + timedelta(days=6)
 
-    return monday, sunday
-
-
-# ============================================================
+    return monday, sunday# ============================================================
 # FORMATO IMPACTO
 # ============================================================
 
@@ -530,6 +707,19 @@ async def start(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
+    user = update.effective_user
+
+    if user:
+        register_user(user)
+
+    referral_registered = False
+
+    if context.args and user:
+        referral_registered = process_referral(
+            user,
+            context.args[0],
+        )
+
     text = (
         "🔥 *Bienvenido a Apex Quant*\n\n"
         "Tu centro de información y herramientas "
@@ -546,6 +736,14 @@ async def start(
         "Los mercados financieros implican riesgo "
         "y pueden producir pérdidas."
     )
+
+    if referral_registered:
+        text += (
+            "\n\n"
+            "🎉 *¡Referido registrado correctamente!*\n"
+            "Gracias por unirte a Apex Quant mediante "
+            "un enlace de invitación."
+        )
 
     if update.message:
         await update.message.reply_text(
@@ -775,8 +973,6 @@ def event_matches_currency(event, currency):
         [],
     )
 
-    # Comprobar primero posibles campos de moneda
-    # que pueda devolver la API.
     currency_fields = [
         event.get("currency"),
         event.get("currency_code"),
@@ -789,8 +985,6 @@ def event_matches_currency(event, currency):
             if str(value).upper() == currency.upper():
                 return True
 
-    # Mantener el filtro actual por país,
-    # institución y descripción del evento.
     searchable = " ".join(
         [
             str(event.get("name", "")),
@@ -803,9 +997,9 @@ def event_matches_currency(event, currency):
         if keyword.lower() in searchable:
             return True
 
-    return False
-
-
+    return False# ============================================================
+# EVENTOS POR DIVISA
+# ============================================================
 
 async def currency_events(
     query,
@@ -947,13 +1141,6 @@ async def show_daily_analysis(query):
     )
 
 
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=back_main_menu(),
-    )
-
-
 # ============================================================
 # SEÑALES
 # ============================================================
@@ -1002,17 +1189,12 @@ async def show_plans(query):
         "Estimación: *48%*\n\n"
         "🟢 *360 días*\n"
         "Estimación: *96%*\n\n"
-        "La referencia de 360 días corresponde "
-        "aproximadamente a un promedio simple del "
-        "8% mensual y no significa que cada mes "
-        "vaya a producir exactamente ese porcentaje.\n\n"
-        "⚠️ *Importante:* los resultados pueden ser "
-        "inferiores, superiores o negativos dependiendo "
-        "de las condiciones del mercado. Existe riesgo "
-        "de pérdida de capital.\n\n"
-        "ℹ️ Las condiciones, comisiones, reglas de "
-        "participación y retiros se definirán antes "
-        "de la activación comercial."
+        "⚠️ Los resultados pueden variar según "
+        "las condiciones del mercado y existe "
+        "posibilidad de pérdidas.\n\n"
+        "📌 Los porcentajes mostrados son únicamente "
+        "estimaciones y no representan una promesa "
+        "de rendimiento."
     )
 
     await query.edit_message_text(
@@ -1029,29 +1211,35 @@ async def show_plans(query):
 async def show_referrals(query):
     user = query.from_user
 
+    register_user(user)
+
     telegram_id = user.id
 
     invite_link = (
-        f"https://t.me/ApexQuantFXBot?start=ref_{telegram_id}"
+        f"https://t.me/ApexQuantFXBot"
+        f"?start=ref_{telegram_id}"
+    )
+
+    referral_count = get_referral_count(
+        telegram_id
     )
 
     text = (
-        "👥 *Programa de referidos Apex Quant*\n\n"
-        "Invita a otras personas a conocer Apex Quant "
-        "utilizando tu enlace personal.\n\n"
+        "👥 *Programa de Referidos Apex Quant*\n\n"
+        "Invita a otras personas a conocer "
+        "Apex Quant utilizando tu enlace personal.\n\n"
         "🔗 *Tu enlace personal:*\n"
         f"`{invite_link}`\n\n"
-        "🆔 *Tu ID de Telegram:* "
+        "🆔 *Tu Telegram ID:*\n"
         f"`{telegram_id}`\n\n"
-        "👥 *Referidos registrados:* 0\n\n"
-        "📊 Cada usuario tendrá un identificador único "
-        "basado en su cuenta de Telegram.\n\n"
-        "🔐 Esto permitirá posteriormente evitar "
-        "referidos duplicados y detectar intentos "
-        "de auto-referencia.\n\n"
-        "⚠️ Las condiciones, comisiones y recompensas "
-        "se establecerán antes de activar el programa "
-        "comercial."
+        f"👥 *Referidos registrados:* "
+        f"*{referral_count}*\n\n"
+        "📌 Cada persona debe entrar mediante "
+        "tu enlace y pulsar *START* para que "
+        "el sistema pueda registrar la invitación.\n\n"
+        "🛡️ El sistema utiliza el ID único de "
+        "Telegram para evitar autorreferidos y "
+        "duplicados."
     )
 
     await query.edit_message_text(
@@ -1066,15 +1254,20 @@ async def show_referrals(query):
 # ============================================================
 
 async def show_language(query):
+    text = (
+        "🌐 *Idioma*\n\n"
+        "Selecciona el idioma del bot:"
+    )
+
     keyboard = [
         [
             InlineKeyboardButton(
                 "🇪🇸 Español",
-                callback_data="lang_es",
+                callback_data="language_es",
             ),
             InlineKeyboardButton(
                 "🇺🇸 English",
-                callback_data="lang_en",
+                callback_data="language_en",
             ),
         ],
         [
@@ -1084,11 +1277,6 @@ async def show_language(query):
             )
         ],
     ]
-
-    text = (
-        "🌐 *Idioma / Language*\n\n"
-        "Selecciona el idioma que deseas utilizar."
-    )
 
     await query.edit_message_text(
         text,
@@ -1106,12 +1294,10 @@ async def show_language(query):
 async def show_settings(query):
     text = (
         "⚙️ *Configuración*\n\n"
-        "Aquí estarán disponibles próximamente "
-        "las preferencias personales de tu cuenta.\n\n"
-        "🔔 Notificaciones\n"
-        "📡 Preferencias de señales\n"
-        "🌐 Idioma\n"
-        "👤 Preferencias de usuario"
+        "La sección de configuración se encuentra "
+        "en preparación.\n\n"
+        "Próximamente podrás gestionar preferencias "
+        "de idioma, notificaciones y otras opciones."
     )
 
     await query.edit_message_text(
@@ -1122,7 +1308,90 @@ async def show_settings(query):
 
 
 # ============================================================
-# CALLBACKS
+# CALENDARIO — HOY
+# ============================================================
+
+async def calendar_today(query):
+    today = today_date()
+
+    await show_events(
+        query,
+        "Calendario de hoy",
+        today,
+        today,
+    )
+
+
+# ============================================================
+# CALENDARIO — MAÑANA
+# ============================================================
+
+async def calendar_tomorrow(query):
+    tomorrow = tomorrow_date()
+
+    await show_events(
+        query,
+        "Calendario de mañana",
+        tomorrow,
+        tomorrow,
+    )
+
+
+# ============================================================
+# CALENDARIO — ESTA SEMANA
+# ============================================================
+
+async def calendar_week(query):
+    monday, sunday = week_dates()
+
+    await show_events(
+        query,
+        "Calendario de esta semana",
+        monday,
+        sunday,
+    )
+
+
+# ============================================================
+# CALENDARIO — ALTO IMPACTO
+# ============================================================
+
+async def calendar_high(query):
+    today = today_date()
+    end_date = today + timedelta(days=7)
+
+    await show_events(
+        query,
+        "Eventos de alto impacto",
+        today,
+        end_date,
+        impact="high",
+    )
+
+
+# ============================================================
+# CALENDARIO — POR DIVISA
+# ============================================================
+
+async def calendar_currency(query):
+    await show_currency_news(query)
+
+
+# ============================================================
+# ACTUALIZAR CALENDARIO
+# ============================================================
+
+async def calendar_refresh(query):
+    today = today_date()
+    end_date = today + timedelta(days=7)
+
+    await show_events(
+        query,
+        "Calendario actualizado",
+        today,
+        end_date,
+    )# ============================================================
+# MANEJADOR PRINCIPAL DE BOTONES
 # ============================================================
 
 async def button_handler(
@@ -1131,19 +1400,11 @@ async def button_handler(
 ):
     query = update.callback_query
 
-    if not query:
-        return
-
     await query.answer()
 
     data = query.data
 
-    # --------------------------------------------------------
-    # MENÚ PRINCIPAL
-    # --------------------------------------------------------
-
     if data == "main_menu":
-
         text = (
             "🔥 *Apex Quant*\n\n"
             "Selecciona una opción:"
@@ -1155,126 +1416,81 @@ async def button_handler(
             reply_markup=main_menu(),
         )
 
-    # --------------------------------------------------------
-    # MERCADOS
-    # --------------------------------------------------------
+        return
 
-    elif data == "markets":
+    if data == "markets":
         await show_markets(query)
+        return
 
-    elif data == "signals":
+    if data == "signals":
         await show_signals(query)
+        return
 
-    elif data == "plans":
+    if data == "plans":
         await show_plans(query)
+        return
 
-    elif data == "referrals":
+    if data == "referrals":
         await show_referrals(query)
+        return
 
-    elif data == "language":
+    if data == "language":
         await show_language(query)
+        return
 
-    elif data == "settings":
+    if data == "settings":
         await show_settings(query)
+        return
 
-    # --------------------------------------------------------
-    # CALENDARIO
-    # --------------------------------------------------------
-
-    elif data == "calendar":
+    if data == "calendar":
         await show_calendar(query)
+        return
 
-    elif data == "calendar_today":
-
-        today = today_date()
-
-        await show_events(
-            query,
-            "Eventos de hoy",
-            today,
-            today,
-        )
-
-    elif data == "calendar_tomorrow":
-
-        tomorrow = tomorrow_date()
-
-        await show_events(
-            query,
-            "Eventos de mañana",
-            tomorrow,
-            tomorrow,
-        )
-
-    elif data == "calendar_week":
-
-        monday, sunday = week_dates()
-
-        await show_events(
-            query,
-            "Eventos de esta semana",
-            monday,
-            sunday,
-        )
-
-    elif data == "calendar_high":
-
-        today = today_date()
-
-        end_date = today + timedelta(days=7)
-
-        await show_events(
-            query,
-            "Eventos de alto impacto",
-            today,
-            end_date,
-            impact="high",
-        )
-
-    elif data == "calendar_currency":
-
-        await show_currency_news(query)
-
-    elif data == "calendar_refresh":
-
-        today = today_date()
-
-        await show_events(
-            query,
-            "Calendario actualizado",
-            today,
-            today,
-        )
-
-    # --------------------------------------------------------
-    # NOTICIAS
-    # --------------------------------------------------------
-
-    elif data == "high_news":
-
+    if data == "high_news":
         await show_high_news(query)
+        return
 
-    elif data == "currency_news":
-
+    if data == "currency_news":
         await show_currency_news(query)
+        return
 
-    elif data == "news_risk":
-
+    if data == "news_risk":
         await show_news_risk(query)
+        return
 
-    elif data == "daily_analysis":
-
+    if data == "daily_analysis":
         await show_daily_analysis(query)
+        return
 
-    # --------------------------------------------------------
-    # DIVISAS
-    # --------------------------------------------------------
+    if data == "calendar_today":
+        await calendar_today(query)
+        return
 
-    elif data.startswith("currency_"):
+    if data == "calendar_tomorrow":
+        await calendar_tomorrow(query)
+        return
 
+    if data == "calendar_week":
+        await calendar_week(query)
+        return
+
+    if data == "calendar_high":
+        await calendar_high(query)
+        return
+
+    if data == "calendar_currency":
+        await calendar_currency(query)
+        return
+
+    if data == "calendar_refresh":
+        await calendar_refresh(query)
+        return
+
+    if data.startswith("currency_"):
         currency = data.replace(
             "currency_",
             "",
+            1,
         )
 
         await currency_events(
@@ -1282,45 +1498,52 @@ async def button_handler(
             currency,
         )
 
-    # --------------------------------------------------------
-    # IDIOMAS
-    # --------------------------------------------------------
+        return
 
-    elif data == "lang_es":
+    if data == "language_es":
+        text = (
+            "🇪🇸 *Español seleccionado*\n\n"
+            "El idioma español está seleccionado."
+        )
 
         await query.edit_message_text(
-            "🇪🇸 *Español seleccionado.*\n\n"
-            "La traducción completa de todas las "
-            "secciones se integrará progresivamente.",
+            text,
             parse_mode="Markdown",
             reply_markup=back_main_menu(),
         )
 
-    elif data == "lang_en":
+        return
+
+    if data == "language_en":
+        text = (
+            "🇺🇸 *English selected*\n\n"
+            "English is currently selected."
+        )
 
         await query.edit_message_text(
-            "🇺🇸 *English selected.*\n\n"
-            "Full translation of all sections "
-            "will be integrated progressively.",
+            text,
             parse_mode="Markdown",
             reply_markup=back_main_menu(),
         )
 
+        return
 
-# ============================================================
-# INICIO DEL BOT — POLLING
-# ============================================================
-
-def main():
-
-    logger.info(
-        "Starting Apex Quant Telegram Bot..."
+    text = (
+        "⚠️ Opción no disponible actualmente."
     )
 
-    logger.info(
-        "Starting Telegram polling..."
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=back_main_menu(),
     )
 
+
+# ============================================================
+# CONFIGURACIÓN DE LA APLICACIÓN
+# ============================================================
+
+def build_application():
     application = (
         Application.builder()
         .token(BOT_TOKEN)
@@ -1336,8 +1559,26 @@ def main():
 
     application.add_handler(
         CallbackQueryHandler(
-            button_handler
+            button_handler,
         )
+    )
+
+    return application
+
+
+# ============================================================
+# INICIO DEL BOT
+# ============================================================
+
+def main():
+    logger.info(
+        "Iniciando Apex Quant..."
+    )
+
+    application = build_application()
+
+    logger.info(
+        "Apex Quant iniciado correctamente."
     )
 
     application.run_polling(
