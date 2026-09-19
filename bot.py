@@ -1,15 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
-import asyncio
-import hashlib
 import logging
-
-import uvicorn
-from starlette.applications import Starlette
-from starlette.requests import Request
-from starlette.responses import PlainTextResponse, Response
-from starlette.routing import Route
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -26,23 +18,8 @@ from telegram.ext import (
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-PORT = int(os.getenv("PORT", "10000"))
-
-# Render proporciona una URL pública para cada Web Service.
-# Podemos definir WEBHOOK_URL manualmente en Render.
-WEBHOOK_URL = os.getenv(
-    "WEBHOOK_URL",
-    "https://apex-quant-telegram-bot.onrender.com"
-).rstrip("/")
-
 if not BOT_TOKEN:
     raise RuntimeError("Falta la variable de entorno BOT_TOKEN")
-
-# Creamos identificadores derivados del token sin mostrar
-# el token directamente en la URL.
-WEBHOOK_HASH = hashlib.sha256(BOT_TOKEN.encode()).hexdigest()
-WEBHOOK_PATH = f"telegram/{WEBHOOK_HASH}"
-WEBHOOK_SECRET = WEBHOOK_HASH[:32]
 
 
 # ============================================================
@@ -57,18 +34,6 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 
 logger = logging.getLogger("apex_quant")
-
-
-# ============================================================
-# APLICACIÓN TELEGRAM
-# ============================================================
-
-application = (
-    Application.builder()
-    .token(BOT_TOKEN)
-    .updater(None)
-    .build()
-)
 
 
 # ============================================================
@@ -252,11 +217,12 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "implican riesgo y pueden producir pérdidas."
     )
 
-    await update.message.reply_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=main_menu(),
-    )
+    if update.message:
+        await update.message.reply_text(
+            text,
+            parse_mode="Markdown",
+            reply_markup=main_menu(),
+        )
 
 
 # ============================================================
@@ -583,6 +549,9 @@ async def button_handler(
 
     query = update.callback_query
 
+    if not query:
+        return
+
     await query.answer()
 
     data = query.data
@@ -655,8 +624,6 @@ async def button_handler(
         await currency_placeholder(query, currency)
 
     elif data == "lang_es":
-        await query.answer("Español seleccionado 🇪🇸")
-
         await query.edit_message_text(
             "🇪🇸 *Español seleccionado.*\n\n"
             "La traducción completa de todas las secciones "
@@ -666,8 +633,6 @@ async def button_handler(
         )
 
     elif data == "lang_en":
-        await query.answer("English selected 🇺🇸")
-
         await query.edit_message_text(
             "🇺🇸 *English selected.*\n\n"
             "Full translation of all sections will be integrated "
@@ -678,94 +643,20 @@ async def button_handler(
 
 
 # ============================================================
-# WEBHOOK
+# INICIO DEL BOT — POLLING
 # ============================================================
 
-async def telegram_webhook(request: Request):
-
-    # Verificación de seguridad del webhook
-    received_secret = request.headers.get(
-        "X-Telegram-Bot-Api-Secret-Token"
-    )
-
-    if received_secret != WEBHOOK_SECRET:
-        logger.warning("Webhook request rejected: invalid secret.")
-        return PlainTextResponse(
-            "Unauthorized",
-            status_code=401,
-        )
-
-    try:
-        data = await request.json()
-
-        update = Update.de_json(
-            data=data,
-            bot=application.bot,
-        )
-
-        await application.update_queue.put(update)
-
-        return Response(status_code=200)
-
-    except Exception:
-        logger.exception("Error processing Telegram webhook.")
-
-        return PlainTextResponse(
-            "Bad Request",
-            status_code=400,
-        )
-
-
-# ============================================================
-# HEALTH CHECK
-# ============================================================
-
-async def health(request: Request):
-
-    return PlainTextResponse(
-        "Apex Quant Telegram Bot is running."
-    )
-
-
-async def home(request: Request):
-
-    return PlainTextResponse(
-        "Apex Quant 🚀"
-    )
-
-
-# ============================================================
-# STARLETTE
-# ============================================================
-
-starlette_app = Starlette(
-    routes=[
-        Route("/", home, methods=["GET"]),
-        Route("/health", health, methods=["GET"]),
-        Route(
-            f"/{WEBHOOK_PATH}",
-            telegram_webhook,
-            methods=["POST"],
-        ),
-    ]
-)
-
-
-# ============================================================
-# INICIO DEL BOT
-# ============================================================
-
-async def main():
+def main():
 
     logger.info("Starting Apex Quant Telegram Bot...")
+    logger.info("Starting Telegram polling...")
 
-    logger.info(
-        "Webhook URL: %s/%s",
-        WEBHOOK_URL,
-        WEBHOOK_PATH,
+    application = (
+        Application.builder()
+        .token(BOT_TOKEN)
+        .build()
     )
 
-    # Registramos los handlers
     application.add_handler(
         CommandHandler("start", start)
     )
@@ -774,43 +665,10 @@ async def main():
         CallbackQueryHandler(button_handler)
     )
 
-    # Inicializamos Telegram
-    await application.initialize()
-
-    # Arrancamos la aplicación
-    await application.start()
-
-    # Configuramos el webhook en Telegram
-    await application.bot.set_webhook(
-        url=f"{WEBHOOK_URL}/{WEBHOOK_PATH}",
-        secret_token=WEBHOOK_SECRET,
+    application.run_polling(
         allowed_updates=Update.ALL_TYPES,
+        drop_pending_updates=True,
     )
-
-    logger.info("Telegram webhook configured successfully.")
-
-    # Servidor HTTP para Render
-    config = uvicorn.Config(
-        starlette_app,
-        host="0.0.0.0",
-        port=PORT,
-        log_level="info",
-    )
-
-    server = uvicorn.Server(config)
-
-    try:
-        await server.serve()
-
-    finally:
-
-        logger.info("Stopping Apex Quant...")
-
-        await application.bot.delete_webhook()
-
-        await application.stop()
-
-        await application.shutdown()
 
 
 # ============================================================
@@ -818,4 +676,4 @@ async def main():
 # ============================================================
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
