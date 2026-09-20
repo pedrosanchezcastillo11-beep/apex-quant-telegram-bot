@@ -1,0 +1,5 @@
+referrals.json
+referrals.json.tmp
+referrals.json.corrupt
+.env
+__pycache__/
