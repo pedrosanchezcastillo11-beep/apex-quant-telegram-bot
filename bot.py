@@ -31,7 +31,9 @@ if not BOT_TOKEN:
 # REFERIDOS — ALMACENAMIENTO
 # ============================================================
 
-REFERRALS_FILE = "referrals.json"
+# Ruta del archivo de referidos. En hosting (Railway, Render, etc.) apúntala
+# a un volumen persistente, por ejemplo: REFERRALS_FILE=/data/referrals.json
+REFERRALS_FILE = os.getenv("REFERRALS_FILE", "referrals.json")
 
 
 def load_referrals():
@@ -56,6 +58,17 @@ def load_referrals():
 
     except Exception as error:
         logger.error("Error cargando referidos: %s", error)
+
+        # Si el archivo existe pero está dañado, se respalda para que
+        # el siguiente guardado NO lo sobrescriba con datos vacíos.
+        try:
+            if os.path.exists(REFERRALS_FILE):
+                backup = f"{REFERRALS_FILE}.corrupt"
+                os.replace(REFERRALS_FILE, backup)
+                logger.error("Archivo dañado respaldado en %s", backup)
+        except Exception as backup_error:
+            logger.error("No se pudo respaldar: %s", backup_error)
+
         return {
             "users": {},
             "referrals": {}
@@ -65,8 +78,14 @@ def load_referrals():
 def save_referrals(data):
     """Guarda los datos de referidos en el archivo JSON."""
     try:
-        with open(REFERRALS_FILE, "w", encoding="utf-8") as file:
+        # Escritura atómica: se escribe en un temporal y luego se reemplaza,
+        # así un corte a mitad de escritura no deja el JSON a medias.
+        temp_file = f"{REFERRALS_FILE}.tmp"
+
+        with open(temp_file, "w", encoding="utf-8") as file:
             json.dump(data, file, ensure_ascii=False, indent=2)
+
+        os.replace(temp_file, REFERRALS_FILE)
     except Exception as error:
         logger.error("Error guardando referidos: %s", error)
 
@@ -147,14 +166,20 @@ def process_referral(user, start_parameter):
 
     data["referrals"].setdefault(user_id, [])
 
-    # El referente debe existir en nuestro registro.
+    # Si el referente no está en el registro (p. ej. el archivo se
+    # reinició tras un redeploy), se crea un registro básico en lugar
+    # de descartar el referido. Su nombre se completará cuando abra el bot.
     if referrer_id not in data["users"]:
         logger.warning(
-            "Referente %s no está registrado. No se asigna referido.",
+            "Referente %s no estaba registrado. Se crea registro básico.",
             referrer_id
         )
-        save_referrals(data)
-        return False
+        data["users"][referrer_id] = {
+            "telegram_id": int(referrer_id),
+            "username": "",
+            "first_name": "",
+            "referred_by": None
+        }
 
     # Una cuenta solamente puede tener un referente.
     if data["users"][user_id].get("referred_by"):
@@ -709,6 +734,12 @@ async def start(
 ):
     user = update.effective_user
 
+    logger.info(
+        "/start de %s con args=%s",
+        user.id if user else None,
+        context.args,
+    )
+
     if user:
         register_user(user)
 
@@ -1208,15 +1239,19 @@ async def show_plans(query):
 # REFERIDOS
 # ============================================================
 
-async def show_referrals(query):
+async def show_referrals(query, context):
     user = query.from_user
 
     register_user(user)
 
     telegram_id = user.id
 
+    # Se usa el username real del bot conectado al token, para que el
+    # enlace nunca apunte a otro bot por un nombre escrito a mano.
+    bot_username = context.bot.username or "ApexQuantFXBot"
+
     invite_link = (
-        f"https://t.me/ApexQuantFXBot"
+        f"https://t.me/{bot_username}"
         f"?start=ref_{telegram_id}"
     )
 
@@ -1431,7 +1466,7 @@ async def button_handler(
         return
 
     if data == "referrals":
-        await show_referrals(query)
+        await show_referrals(query, context)
         return
 
     if data == "language":
