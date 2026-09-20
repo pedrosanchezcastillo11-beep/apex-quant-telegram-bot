@@ -18,7 +18,7 @@ from telegram.ext import (
 
 
 # ============================================================
-# CONFIGURACIÓN
+# CONFIGURACIÃ“N
 # ============================================================
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
@@ -28,12 +28,22 @@ if not BOT_TOKEN:
 
 
 # ============================================================
-# REFERIDOS — ALMACENAMIENTO
+# REFERIDOS â€” ALMACENAMIENTO
 # ============================================================
 
-# Ruta del archivo de referidos. En hosting (Railway, Render, etc.) apúntala
+# Ruta del archivo de referidos. En hosting (Railway, Render, etc.) apÃºntala
 # a un volumen persistente, por ejemplo: REFERRALS_FILE=/data/referrals.json
 REFERRALS_FILE = os.getenv("REFERRALS_FILE", "referrals.json")
+
+# ============================================================
+# SEÃ‘ALES â€” SUSCRIPCIONES
+# ============================================================
+
+SUBSCRIPTIONS_FILE = os.getenv("SUBSCRIPTIONS_FILE", "subscriptions.json")
+SIGNALS_PRICE_USDT = 30
+SIGNALS_DURATION_DAYS = 30
+USDT_BEP20_ADDRESS = os.getenv("USDT_BEP20_ADDRESS", "")
+ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID", "")
 
 
 def load_referrals():
@@ -49,7 +59,7 @@ def load_referrals():
             data = json.load(file)
 
         if not isinstance(data, dict):
-            raise ValueError("Formato de referidos inválido")
+            raise ValueError("Formato de referidos invÃ¡lido")
 
         data.setdefault("users", {})
         data.setdefault("referrals", {})
@@ -59,13 +69,13 @@ def load_referrals():
     except Exception as error:
         logger.error("Error cargando referidos: %s", error)
 
-        # Si el archivo existe pero está dañado, se respalda para que
-        # el siguiente guardado NO lo sobrescriba con datos vacíos.
+        # Si el archivo existe pero estÃ¡ daÃ±ado, se respalda para que
+        # el siguiente guardado NO lo sobrescriba con datos vacÃ­os.
         try:
             if os.path.exists(REFERRALS_FILE):
                 backup = f"{REFERRALS_FILE}.corrupt"
                 os.replace(REFERRALS_FILE, backup)
-                logger.error("Archivo dañado respaldado en %s", backup)
+                logger.error("Archivo daÃ±ado respaldado en %s", backup)
         except Exception as backup_error:
             logger.error("No se pudo respaldar: %s", backup_error)
 
@@ -78,8 +88,8 @@ def load_referrals():
 def save_referrals(data):
     """Guarda los datos de referidos en el archivo JSON."""
     try:
-        # Escritura atómica: se escribe en un temporal y luego se reemplaza,
-        # así un corte a mitad de escritura no deja el JSON a medias.
+        # Escritura atÃ³mica: se escribe en un temporal y luego se reemplaza,
+        # asÃ­ un corte a mitad de escritura no deja el JSON a medias.
         temp_file = f"{REFERRALS_FILE}.tmp"
 
         with open(temp_file, "w", encoding="utf-8") as file:
@@ -108,7 +118,7 @@ def register_user(user):
         data["referrals"].setdefault(user_id, [])
 
     else:
-        # Actualizar datos básicos sin modificar el referente.
+        # Actualizar datos bÃ¡sicos sin modificar el referente.
         data["users"][user_id]["username"] = user.username or ""
         data["users"][user_id]["first_name"] = user.first_name or ""
         data["referrals"].setdefault(user_id, [])
@@ -124,7 +134,7 @@ def process_referral(user, start_parameter):
 
     Devuelve:
         True  -> referido registrado correctamente
-        False -> no se registró
+        False -> no se registrÃ³
     """
     if not user or not start_parameter:
         return False
@@ -137,7 +147,7 @@ def process_referral(user, start_parameter):
     referrer_id = parameter[4:].strip()
 
     if not referrer_id.isdigit():
-        logger.warning("Código de referido inválido: %s", parameter)
+        logger.warning("CÃ³digo de referido invÃ¡lido: %s", parameter)
         return False
 
     user_id = str(user.id)
@@ -166,12 +176,12 @@ def process_referral(user, start_parameter):
 
     data["referrals"].setdefault(user_id, [])
 
-    # Si el referente no está en el registro (p. ej. el archivo se
-    # reinició tras un redeploy), se crea un registro básico en lugar
-    # de descartar el referido. Su nombre se completará cuando abra el bot.
+    # Si el referente no estÃ¡ en el registro (p. ej. el archivo se
+    # reiniciÃ³ tras un redeploy), se crea un registro bÃ¡sico en lugar
+    # de descartar el referido. Su nombre se completarÃ¡ cuando abra el bot.
     if referrer_id not in data["users"]:
         logger.warning(
-            "Referente %s no estaba registrado. Se crea registro básico.",
+            "Referente %s no estaba registrado. Se crea registro bÃ¡sico.",
             referrer_id
         )
         data["users"][referrer_id] = {
@@ -196,7 +206,7 @@ def process_referral(user, start_parameter):
 
     if user_id in data["referrals"][referrer_id]:
         logger.info(
-            "Usuario %s ya está registrado como referido de %s.",
+            "Usuario %s ya estÃ¡ registrado como referido de %s.",
             user_id,
             referrer_id
         )
@@ -221,7 +231,7 @@ def process_referral(user, start_parameter):
 
 
 def get_referral_count(user_id):
-    """Devuelve el número real de referidos de un usuario."""
+    """Devuelve el nÃºmero real de referidos de un usuario."""
     data = load_referrals()
 
     return len(
@@ -259,31 +269,31 @@ def main_menu():
     keyboard = [
         [
             InlineKeyboardButton(
-                "📊 Mercados",
+                "ðŸ“Š Mercados",
                 callback_data="markets",
             ),
             InlineKeyboardButton(
-                "📡 Señales",
+                "ðŸ“¡ SeÃ±ales",
                 callback_data="signals",
             ),
         ],
         [
             InlineKeyboardButton(
-                "💰 Planes",
+                "ðŸ’° Planes",
                 callback_data="plans",
             ),
             InlineKeyboardButton(
-                "👥 Referidos",
+                "ðŸ‘¥ Referidos",
                 callback_data="referrals",
             ),
         ],
         [
             InlineKeyboardButton(
-                "🌐 Idioma",
+                "ðŸŒ Idioma",
                 callback_data="language",
             ),
             InlineKeyboardButton(
-                "⚙️ Configuración",
+                "âš™ï¸ ConfiguraciÃ³n",
                 callback_data="settings",
             ),
         ],
@@ -293,44 +303,44 @@ def main_menu():
 
 
 # ============================================================
-# MENÚ MERCADOS
+# MENÃš MERCADOS
 # ============================================================
 
 def markets_menu():
     keyboard = [
         [
             InlineKeyboardButton(
-                "📅 Calendario económico",
+                "ðŸ“… Calendario econÃ³mico",
                 callback_data="calendar",
             )
         ],
         [
             InlineKeyboardButton(
-                "🚨 Noticias alto impacto",
+                "ðŸš¨ Noticias alto impacto",
                 callback_data="high_news",
             )
         ],
         [
             InlineKeyboardButton(
-                "💱 Noticias por divisa",
+                "ðŸ’± Noticias por divisa",
                 callback_data="currency_news",
             )
         ],
         [
             InlineKeyboardButton(
-                "⚠️ Riesgo de noticias",
+                "âš ï¸ Riesgo de noticias",
                 callback_data="news_risk",
             )
         ],
         [
             InlineKeyboardButton(
-                "📈 Análisis diario",
+                "ðŸ“ˆ AnÃ¡lisis diario",
                 callback_data="daily_analysis",
             )
         ],
         [
             InlineKeyboardButton(
-                "⬅️ Menú principal",
+                "â¬…ï¸ MenÃº principal",
                 callback_data="main_menu",
             )
         ],
@@ -340,48 +350,48 @@ def markets_menu():
 
 
 # ============================================================
-# MENÚ CALENDARIO
+# MENÃš CALENDARIO
 # ============================================================
 
 def calendar_menu():
     keyboard = [
         [
             InlineKeyboardButton(
-                "📅 Hoy",
+                "ðŸ“… Hoy",
                 callback_data="calendar_today",
             ),
             InlineKeyboardButton(
-                "📅 Mañana",
+                "ðŸ“… MaÃ±ana",
                 callback_data="calendar_tomorrow",
             ),
         ],
         [
             InlineKeyboardButton(
-                "🗓️ Esta semana",
+                "ðŸ—“ï¸ Esta semana",
                 callback_data="calendar_week",
             )
         ],
         [
             InlineKeyboardButton(
-                "🚨 Alto impacto",
+                "ðŸš¨ Alto impacto",
                 callback_data="calendar_high",
             )
         ],
         [
             InlineKeyboardButton(
-                "💱 Por divisa",
+                "ðŸ’± Por divisa",
                 callback_data="calendar_currency",
             )
         ],
         [
             InlineKeyboardButton(
-                "🔄 Actualizar",
+                "ðŸ”„ Actualizar",
                 callback_data="calendar_refresh",
             )
         ],
         [
             InlineKeyboardButton(
-                "⬅️ Mercados",
+                "â¬…ï¸ Mercados",
                 callback_data="markets",
             )
         ],
@@ -391,19 +401,19 @@ def calendar_menu():
 
 
 # ============================================================
-# MENÚ DIVISAS
+# MENÃš DIVISAS
 # ============================================================
 
 def currency_menu():
     currencies = [
-        ("🇺🇸 USD", "USD"),
-        ("🇪🇺 EUR", "EUR"),
-        ("🇬🇧 GBP", "GBP"),
-        ("🇯🇵 JPY", "JPY"),
-        ("🇨🇭 CHF", "CHF"),
-        ("🇨🇦 CAD", "CAD"),
-        ("🇦🇺 AUD", "AUD"),
-        ("🇳🇿 NZD", "NZD"),
+        ("ðŸ‡ºðŸ‡¸ USD", "USD"),
+        ("ðŸ‡ªðŸ‡º EUR", "EUR"),
+        ("ðŸ‡¬ðŸ‡§ GBP", "GBP"),
+        ("ðŸ‡¯ðŸ‡µ JPY", "JPY"),
+        ("ðŸ‡¨ðŸ‡­ CHF", "CHF"),
+        ("ðŸ‡¨ðŸ‡¦ CAD", "CAD"),
+        ("ðŸ‡¦ðŸ‡º AUD", "AUD"),
+        ("ðŸ‡³ðŸ‡¿ NZD", "NZD"),
     ]
 
     keyboard = []
@@ -424,7 +434,7 @@ def currency_menu():
     keyboard.append(
         [
             InlineKeyboardButton(
-                "⬅️ Calendario",
+                "â¬…ï¸ Calendario",
                 callback_data="calendar",
             )
         ]
@@ -434,7 +444,7 @@ def currency_menu():
 
 
 # ============================================================
-# BOTÓN MENÚ PRINCIPAL
+# BOTÃ“N MENÃš PRINCIPAL
 # ============================================================
 
 def back_main_menu():
@@ -442,7 +452,7 @@ def back_main_menu():
         [
             [
                 InlineKeyboardButton(
-                    "⬅️ Menú principal",
+                    "â¬…ï¸ MenÃº principal",
                     callback_data="main_menu",
                 )
             ]
@@ -451,7 +461,140 @@ def back_main_menu():
 
 
 # ============================================================
-# FINANCE CALENDAR — PETICIÓN HTTP
+# SUSCRIPCIONES DE SEÃ‘ALES â€” ALMACENAMIENTO
+# ============================================================
+
+def load_subscriptions():
+    """Carga las suscripciones desde un archivo JSON."""
+    try:
+        if not os.path.exists(SUBSCRIPTIONS_FILE):
+            return {}
+
+        with open(SUBSCRIPTIONS_FILE, "r", encoding="utf-8") as file:
+            data = json.load(file)
+
+        return data if isinstance(data, dict) else {}
+
+    except Exception as error:
+        logger.error("Error cargando suscripciones: %s", error)
+        return {}
+
+
+def save_subscriptions(data):
+    """Guarda las suscripciones de forma atÃ³mica."""
+    try:
+        temp_file = f"{SUBSCRIPTIONS_FILE}.tmp"
+
+        with open(temp_file, "w", encoding="utf-8") as file:
+            json.dump(data, file, ensure_ascii=False, indent=2)
+
+        os.replace(temp_file, SUBSCRIPTIONS_FILE)
+
+    except Exception as error:
+        logger.error("Error guardando suscripciones: %s", error)
+
+
+def get_subscription(user_id):
+    """Devuelve la suscripciÃ³n de un usuario, si existe."""
+    data = load_subscriptions()
+    return data.get(str(user_id))
+
+
+def activate_subscription(user_id):
+    """Activa o renueva una suscripciÃ³n por 30 dÃ­as."""
+    now = datetime.now()
+    current = get_subscription(user_id)
+
+    if current:
+        try:
+            current_expiry = datetime.fromisoformat(
+                current.get("expires_at", "")
+            )
+        except (TypeError, ValueError):
+            current_expiry = now
+
+        start_date = current_expiry if current_expiry > now else now
+    else:
+        start_date = now
+
+    expires_at = start_date + timedelta(days=SIGNALS_DURATION_DAYS)
+
+    data = load_subscriptions()
+    data[str(user_id)] = {
+        "telegram_id": int(user_id),
+        "status": "active",
+        "started_at": start_date.isoformat(),
+        "expires_at": expires_at.isoformat(),
+        "price_usdt": SIGNALS_PRICE_USDT,
+        "payment_network": "BEP20",
+    }
+    save_subscriptions(data)
+
+    return data[str(user_id)]
+
+
+def subscription_is_active(user_id):
+    """Comprueba si una suscripciÃ³n estÃ¡ activa y no vencida."""
+    subscription = get_subscription(user_id)
+
+    if not subscription or subscription.get("status") != "active":
+        return False
+
+    try:
+        expires_at = datetime.fromisoformat(subscription["expires_at"])
+    except (KeyError, TypeError, ValueError):
+        return False
+
+    if expires_at <= datetime.now():
+        data = load_subscriptions()
+        data[str(user_id)]["status"] = "expired"
+        save_subscriptions(data)
+        return False
+
+    return True
+
+
+def subscription_status_text(user_id):
+    """Genera el estado de la suscripciÃ³n para mostrar al usuario."""
+    subscription = get_subscription(user_id)
+
+    if not subscription or not subscription_is_active(user_id):
+        return (
+            "ðŸ”´ *SuscripciÃ³n no activa*\n\n"
+            f"Acceso a seÃ±ales: *${SIGNALS_PRICE_USDT} USDT/mes*\n"
+            "Red de pago: *BEP20*"
+        )
+
+    try:
+        expires_at = datetime.fromisoformat(subscription["expires_at"])
+        remaining = max(
+            0,
+            (expires_at.date() - datetime.now().date()).days
+        )
+        expiry_text = expires_at.strftime("%d/%m/%Y")
+    except (KeyError, TypeError, ValueError):
+        remaining = 0
+        expiry_text = "No disponible"
+
+    return (
+        "ðŸŸ¢ *SuscripciÃ³n activa*\n\n"
+        f"ðŸ“… Vencimiento: *{expiry_text}*\n"
+        f"â³ DÃ­as restantes: *{remaining}*\n"
+        f"ðŸ’µ Precio: *${SIGNALS_PRICE_USDT} USDT/mes*\n"
+        "ðŸŒ Red: *BEP20*"
+    )
+
+
+def is_admin(user_id):
+    """Comprueba si el Telegram ID pertenece al administrador configurado."""
+    return bool(
+        ADMIN_TELEGRAM_ID
+        and str(user_id) == str(ADMIN_TELEGRAM_ID)
+    )
+
+
+# ============================================================
+# FINANCE CALENDAR â€” PETICIÃ“N HTTP
 # ============================================================
 
 def fetch_json(url):
@@ -520,15 +663,15 @@ def impact_label(impact):
     impact = str(impact or "").lower()
 
     if impact == "high":
-        return "🔴 ALTO"
+        return "ðŸ”´ ALTO"
 
     if impact == "medium":
-        return "🟠 MEDIO"
+        return "ðŸŸ  MEDIO"
 
     if impact == "low":
-        return "🟢 BAJO"
+        return "ðŸŸ¢ BAJO"
 
-    return "⚪ SIN CLASIFICAR"
+    return "âšª SIN CLASIFICAR"
 
 
 # ============================================================
@@ -540,7 +683,7 @@ def format_event(event):
     time_et = event.get("time_et", "")
     title = event.get("title") or event.get(
         "name",
-        "Evento económico",
+        "Evento econÃ³mico",
     )
 
     impact = event.get("impact")
@@ -554,44 +697,44 @@ def format_event(event):
 
     if time_et:
         lines.append(
-            f"🕐 {time_et} ET"
+            f"ðŸ• {time_et} ET"
         )
     else:
         lines.append(
-            "🕐 Hora no disponible"
+            "ðŸ• Hora no disponible"
         )
 
     lines.append(
-        f"📌 {title}"
+        f"ðŸ“Œ {title}"
     )
 
     lines.append(
-        f"📊 Impacto: {impact_label(impact)}"
+        f"ðŸ“Š Impacto: {impact_label(impact)}"
     )
 
     if category:
         lines.append(
-            f"📂 {category}"
+            f"ðŸ“‚ {category}"
         )
 
     if consensus:
         lines.append(
-            f"🔮 Consenso: {consensus}"
+            f"ðŸ”® Consenso: {consensus}"
         )
 
     if prior:
         lines.append(
-            f"◀️ Anterior: {prior}"
+            f"â—€ï¸ Anterior: {prior}"
         )
 
     if actual:
         lines.append(
-            f"✅ Actual: {actual}"
+            f"âœ… Actual: {actual}"
         )
 
     if url:
         lines.append(
-            f"🔗 {url}"
+            f"ðŸ”— {url}"
         )
 
     return "\n".join(lines)
@@ -654,10 +797,10 @@ async def show_events(
 
     if not events:
         text = (
-            f"📅 *{title}*\n\n"
-            "No se encontraron eventos económicos "
+            f"ðŸ“… *{title}*\n\n"
+            "No se encontraron eventos econÃ³micos "
             "para el periodo seleccionado.\n\n"
-            "🔄 Puedes actualizar el calendario."
+            "ðŸ”„ Puedes actualizar el calendario."
         )
 
         await query.edit_message_text(
@@ -669,7 +812,7 @@ async def show_events(
         return
 
     lines = [
-        f"📅 *{title}*",
+        f"ðŸ“… *{title}*",
         "",
     ]
 
@@ -682,7 +825,7 @@ async def show_events(
             current_date = event_date
 
             lines.append(
-                f"📆 *{event_date}*"
+                f"ðŸ“† *{event_date}*"
             )
 
             lines.append("")
@@ -692,35 +835,82 @@ async def show_events(
         )
 
         lines.append(
-            "──────────────"
+            "â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€"
         )
 
     lines.extend(
         [
             "",
-            "⚠️ Los eventos económicos pueden "
-            "provocar movimientos rápidos y "
+            "âš ï¸ Los eventos econÃ³micos pueden "
+            "provocar movimientos rÃ¡pidos y "
             "significativos en los mercados.",
             "",
-            "🔗 Fuente: FinanceCalendar.com",
+            "ðŸ”— Fuente: FinanceCalendar.com",
         ]
     )
 
     text = "\n".join(lines)
 
-    # Telegram tiene un límite de longitud por mensaje.
+    # Telegram tiene un lÃ­mite de longitud por mensaje.
     # Si hay demasiados eventos, mostramos los primeros.
     if len(text) > 3900:
         text = text[:3800]
         text += (
-            "\n\n… Lista recortada por límite de mensaje."
-            "\n🔗 Fuente: FinanceCalendar.com"
+            "\n\nâ€¦ Lista recortada por lÃ­mite de mensaje."
+            "\nðŸ”— Fuente: FinanceCalendar.com"
         )
 
     await query.edit_message_text(
         text,
         parse_mode="Markdown",
         reply_markup=calendar_menu(),
+    )
+
+
+# ============================================================
+# ACTIVACIÃ“N MANUAL DE SUSCRIPCIONES
+# ============================================================
+
+async def activate_signal_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    """Uso administrativo: /activate ID_TELEGRAM"""
+    user = update.effective_user
+
+    if not user or not is_admin(user.id):
+        if update.message:
+            await update.message.reply_text(
+                "â›” No tienes permiso para utilizar este comando."
+            )
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Uso:\n/activate ID_TELEGRAM"
+        )
+        return
+
+    target_id = context.args[0].strip()
+
+    if not target_id.isdigit():
+        await update.message.reply_text(
+            "âŒ El Telegram ID debe ser numÃ©rico."
+        )
+        return
+
+    subscription = activate_subscription(int(target_id))
+    expires_at = datetime.fromisoformat(
+        subscription["expires_at"]
+    ).strftime("%d/%m/%Y")
+
+    await update.message.reply_text(
+        "âœ… *SuscripciÃ³n activada*\n\n"
+        f"ðŸ†” Telegram ID: `{target_id}`\n"
+        f"ðŸ’µ Plan: *${SIGNALS_PRICE_USDT} USDT / 30 dÃ­as*\n"
+        "ðŸŒ Red: *BEP20*\n"
+        f"ðŸ“… Vencimiento: *{expires_at}*",
+        parse_mode="Markdown",
     )
 
 
@@ -752,28 +942,28 @@ async def start(
         )
 
     text = (
-        "🔥 *Bienvenido a Apex Quant*\n\n"
-        "Tu centro de información y herramientas "
+        "ðŸ”¥ *Bienvenido a Apex Quant*\n\n"
+        "Tu centro de informaciÃ³n y herramientas "
         "para mercados financieros.\n\n"
-        "📊 Mercados\n"
-        "📡 Señales\n"
-        "💰 Planes\n"
-        "👥 Referidos\n"
-        "🌐 Idioma\n"
-        "⚙️ Configuración\n\n"
-        "Selecciona una opción para comenzar.\n\n"
-        "⚠️ *Aviso de riesgo:* la información, "
-        "análisis y señales no garantizan resultados. "
+        "ðŸ“Š Mercados\n"
+        "ðŸ“¡ SeÃ±ales\n"
+        "ðŸ’° Planes\n"
+        "ðŸ‘¥ Referidos\n"
+        "ðŸŒ Idioma\n"
+        "âš™ï¸ ConfiguraciÃ³n\n\n"
+        "Selecciona una opciÃ³n para comenzar.\n\n"
+        "âš ï¸ *Aviso de riesgo:* la informaciÃ³n, "
+        "anÃ¡lisis y seÃ±ales no garantizan resultados. "
         "Los mercados financieros implican riesgo "
-        "y pueden producir pérdidas."
+        "y pueden producir pÃ©rdidas."
     )
 
     if referral_registered:
         text += (
             "\n\n"
-            "🎉 *¡Referido registrado correctamente!*\n"
+            "ðŸŽ‰ *Â¡Referido registrado correctamente!*\n"
             "Gracias por unirte a Apex Quant mediante "
-            "un enlace de invitación."
+            "un enlace de invitaciÃ³n."
         )
 
     if update.message:
@@ -790,10 +980,10 @@ async def start(
 
 async def show_markets(query):
     text = (
-        "📊 *Mercados*\n\n"
-        "Consulta información y análisis relacionados "
+        "ðŸ“Š *Mercados*\n\n"
+        "Consulta informaciÃ³n y anÃ¡lisis relacionados "
         "con los mercados financieros.\n\n"
-        "Selecciona una opción:"
+        "Selecciona una opciÃ³n:"
     )
 
     await query.edit_message_text(
@@ -809,11 +999,11 @@ async def show_markets(query):
 
 async def show_calendar(query):
     text = (
-        "📅 *Calendario económico*\n\n"
-        "Consulta eventos económicos que pueden "
+        "ðŸ“… *Calendario econÃ³mico*\n\n"
+        "Consulta eventos econÃ³micos que pueden "
         "generar volatilidad en los mercados.\n\n"
         "Selecciona el periodo que deseas consultar.\n\n"
-        "🔗 Datos: FinanceCalendar.com"
+        "ðŸ”— Datos: FinanceCalendar.com"
     )
 
     await query.edit_message_text(
@@ -856,10 +1046,10 @@ async def show_news_risk(query):
 
     if events:
         text = (
-            "⚠️ *Riesgo de noticias*\n\n"
+            "âš ï¸ *Riesgo de noticias*\n\n"
             "Se detectaron eventos de *alto impacto* "
             "en el periodo actual.\n\n"
-            "Antes de ejecutar una operación, "
+            "Antes de ejecutar una operaciÃ³n, "
             "revisa especialmente estos eventos.\n\n"
         )
 
@@ -878,23 +1068,23 @@ async def show_news_risk(query):
             )
 
             text += (
-                f"🔴 {time_et} ET — {title}\n"
+                f"ðŸ”´ {time_et} ET â€” {title}\n"
             )
 
         text += (
-            "\n⚠️ Una noticia puede provocar "
+            "\nâš ï¸ Una noticia puede provocar "
             "volatilidad, spread elevado y "
             "movimientos bruscos.\n\n"
-            "🔗 Fuente: FinanceCalendar.com"
+            "ðŸ”— Fuente: FinanceCalendar.com"
         )
 
     else:
         text = (
-            "⚠️ *Riesgo de noticias*\n\n"
+            "âš ï¸ *Riesgo de noticias*\n\n"
             "No se encontraron eventos de alto impacto "
             "para el periodo consultado.\n\n"
             "Esto no elimina el riesgo de mercado.\n\n"
-            "🔗 Fuente: FinanceCalendar.com"
+            "ðŸ”— Fuente: FinanceCalendar.com"
         )
 
     await query.edit_message_text(
@@ -910,7 +1100,7 @@ async def show_news_risk(query):
 
 async def show_currency_news(query):
     text = (
-        "💱 *Noticias por divisa*\n\n"
+        "ðŸ’± *Noticias por divisa*\n\n"
         "Selecciona la moneda que deseas analizar:"
     )
 
@@ -1055,15 +1245,15 @@ async def currency_events(
 
     if not filtered:
         text = (
-            f"💱 *Noticias {currency}*\n\n"
+            f"ðŸ’± *Noticias {currency}*\n\n"
             "No se encontraron eventos relacionados "
-            f"con {currency} durante los próximos días.\n\n"
-            "🔗 Fuente: FinanceCalendar.com"
+            f"con {currency} durante los prÃ³ximos dÃ­as.\n\n"
+            "ðŸ”— Fuente: FinanceCalendar.com"
         )
 
     else:
         lines = [
-            f"💱 *Noticias {currency}*",
+            f"ðŸ’± *Noticias {currency}*",
             "",
         ]
 
@@ -1091,41 +1281,41 @@ async def currency_events(
             )
 
             lines.append(
-                f"📆 {event_date}"
+                f"ðŸ“† {event_date}"
             )
 
             lines.append(
-                f"🕐 {time_et} ET"
+                f"ðŸ• {time_et} ET"
             )
 
             lines.append(
-                f"📌 {title}"
+                f"ðŸ“Œ {title}"
             )
 
             lines.append(
-                f"📊 {impact}"
+                f"ðŸ“Š {impact}"
             )
 
             consensus = event.get("consensus")
 
             if consensus:
                 lines.append(
-                    f"🔮 Consenso: {consensus}"
+                    f"ðŸ”® Consenso: {consensus}"
                 )
 
             prior = event.get("prior")
 
             if prior:
                 lines.append(
-                    f"◀️ Anterior: {prior}"
+                    f"â—€ï¸ Anterior: {prior}"
                 )
 
             lines.append(
-                "──────────────"
+                "â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€"
             )
 
         lines.append(
-            "🔗 Fuente: FinanceCalendar.com"
+            "ðŸ”— Fuente: FinanceCalendar.com"
         )
 
         text = "\n".join(lines)
@@ -1138,31 +1328,31 @@ async def currency_events(
 
 
 # ============================================================
-# ANÁLISIS DIARIO
+# ANÃLISIS DIARIO
 # ============================================================
 
 async def show_daily_analysis(query):
     text = (
-        "📈 *Análisis diario Apex Quant*\n\n"
-        "La metodología de análisis contempla:\n\n"
-        "🔹 BOS — Break of Structure\n"
-        "🔹 FVG — Fair Value Gap\n"
-        "🔹 Liquidez\n"
-        "🔹 Volumen\n"
-        "🔹 RSI 14\n"
-        "🔹 HH / HL\n"
-        "🔹 Estructura de mercado\n\n"
-        "🎯 Instrumentos principales:\n"
-        "• EUR/USD\n"
-        "• GBP/USD\n"
-        "• GBP/JPY\n\n"
-        "⏱️ *Marcos de análisis:*\n"
-        "• H4 — Dirección\n"
-        "• H1 — Liquidez y estructura\n"
-        "• M5 — Entrada\n\n"
-        "⚠️ El análisis es informativo. "
-        "Ninguna configuración técnica garantiza "
-        "una operación ganadora."
+        "ðŸ“ˆ *AnÃ¡lisis diario Apex Quant*\n\n"
+        "La metodologÃ­a de anÃ¡lisis contempla:\n\n"
+        "ðŸ”¹ BOS â€” Break of Structure\n"
+        "ðŸ”¹ FVG â€” Fair Value Gap\n"
+        "ðŸ”¹ Liquidez\n"
+        "ðŸ”¹ Volumen\n"
+        "ðŸ”¹ RSI 14\n"
+        "ðŸ”¹ HH / HL\n"
+        "ðŸ”¹ Estructura de mercado\n\n"
+        "ðŸŽ¯ Instrumentos principales:\n"
+        "â€¢ EUR/USD\n"
+        "â€¢ GBP/USD\n"
+        "â€¢ GBP/JPY\n\n"
+        "â±ï¸ *Marcos de anÃ¡lisis:*\n"
+        "â€¢ H4 â€” DirecciÃ³n\n"
+        "â€¢ H1 â€” Liquidez y estructura\n"
+        "â€¢ M5 â€” Entrada\n\n"
+        "âš ï¸ El anÃ¡lisis es informativo. "
+        "Ninguna configuraciÃ³n tÃ©cnica garantiza "
+        "una operaciÃ³n ganadora."
     )
 
     await query.edit_message_text(
@@ -1173,33 +1363,178 @@ async def show_daily_analysis(query):
 
 
 # ============================================================
-# SEÑALES
+# SEÃ‘ALES
 # ============================================================
 
 async def show_signals(query):
     text = (
-        "📡 *Señales Apex Quant*\n\n"
-        "Cuando exista una oportunidad que cumpla "
-        "los criterios establecidos, la señal podrá incluir:\n\n"
-        "💱 Par\n"
-        "📈 Dirección\n"
-        "🎯 Entrada\n"
-        "🛑 Stop Loss\n"
-        "💰 Take Profit\n"
-        "⚖️ R:R\n"
-        "📊 Riesgo estimado\n\n"
-        "Actualmente esta sección está preparada "
-        "para la futura integración del sistema "
-        "de señales.\n\n"
-        "⚠️ Las señales no garantizan resultados. "
-        "El trading implica riesgo de pérdida."
+        "ðŸ“¡ *SeÃ±ales Apex Quant*\n\n"
+        "Accede a las seÃ±ales de trading de Apex Quant "
+        "mediante una suscripciÃ³n mensual.\n\n"
+        f"ðŸ’µ *Precio: ${SIGNALS_PRICE_USDT} USDT / mes*\n"
+        "ðŸŒ *Red de pago: USDT BEP20*\n\n"
+        "La suscripciÃ³n te permitirÃ¡ recibir las seÃ±ales "
+        "publicadas por Apex Quant durante el periodo activo.\n\n"
+        "âš ï¸ *Aviso de riesgo:* las seÃ±ales son informaciÃ³n "
+        "y anÃ¡lisis de mercado. No garantizan ganancias. "
+        "El trading implica riesgo y puede producir pÃ©rdidas."
     )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "ðŸ’³ Suscribirme â€” $30",
+                callback_data="signal_subscribe",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "ðŸ“‹ CÃ³mo pagar",
+                callback_data="signal_payment",
+            ),
+            InlineKeyboardButton(
+                "ðŸ“… Mi suscripciÃ³n",
+                callback_data="signal_status",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "â¬…ï¸ MenÃº principal",
+                callback_data="main_menu",
+            )
+        ],
+    ]
 
     await query.edit_message_text(
         text,
         parse_mode="Markdown",
-        reply_markup=back_main_menu(),
+        reply_markup=InlineKeyboardMarkup(keyboard),
     )
+
+
+async def show_signal_subscription(query):
+    text = (
+        "ðŸ’³ *SuscripciÃ³n de SeÃ±ales Apex Quant*\n\n"
+        f"ðŸ’µ Precio: *${SIGNALS_PRICE_USDT} USDT*\n"
+        "ðŸ“† DuraciÃ³n: *30 dÃ­as*\n"
+        "ðŸŒ Red: *BEP20*\n\n"
+        "El pago se realizarÃ¡ manualmente mediante "
+        "USDT en la red BEP20.\n\n"
+        "DespuÃ©s de realizar el pago, conserva el "
+        "comprobante o TXID para enviarlo al administrador "
+        "y solicitar la activaciÃ³n de tu suscripciÃ³n.\n\n"
+        "âš ï¸ La suscripciÃ³n da acceso a seÃ±ales, pero "
+        "no garantiza resultados ni ganancias."
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "ðŸ“‹ Instrucciones de pago",
+                callback_data="signal_payment",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "ðŸ“… Consultar mi suscripciÃ³n",
+                callback_data="signal_status",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "â¬…ï¸ SeÃ±ales",
+                callback_data="signals",
+            )
+        ],
+    ]
+
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+async def show_signal_payment(query):
+    if USDT_BEP20_ADDRESS:
+        wallet_text = (
+            "ðŸ’³ *DirecciÃ³n USDT BEP20:*\n"
+            f"`{USDT_BEP20_ADDRESS}`"
+        )
+    else:
+        wallet_text = (
+            "ðŸ’³ *DirecciÃ³n de pago:*\n"
+            "La direcciÃ³n USDT BEP20 serÃ¡ configurada "
+            "por el administrador antes de aceptar pagos."
+        )
+
+    text = (
+        "ðŸ“‹ *Instrucciones de pago*\n\n"
+        f"1ï¸âƒ£ EnvÃ­a *${SIGNALS_PRICE_USDT} USDT*.\n"
+        "2ï¸âƒ£ Utiliza Ãºnicamente la red *BEP20*.\n"
+        "3ï¸âƒ£ Conserva el comprobante y/o TXID.\n"
+        "4ï¸âƒ£ EnvÃ­a el comprobante al administrador "
+        "para verificar el pago.\n"
+        "5ï¸âƒ£ Una vez verificado, tu suscripciÃ³n serÃ¡ "
+        "activada manualmente por 30 dÃ­as.\n\n"
+        f"{wallet_text}\n\n"
+        "âš ï¸ *IMPORTANTE:* enviar USDT por una red distinta "
+        "de BEP20 puede provocar la pÃ©rdida de los fondos.\n\n"
+        "âš ï¸ Apex Quant no garantiza ganancias. "
+        "Las operaciones de trading implican riesgo."
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "ðŸ“… Mi suscripciÃ³n",
+                callback_data="signal_status",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "â¬…ï¸ SeÃ±ales",
+                callback_data="signals",
+            )
+        ],
+    ]
+
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
+
+async def show_signal_status(query):
+    text = (
+        "ðŸ“… *Mi suscripciÃ³n de seÃ±ales*\n\n"
+        f"{subscription_status_text(query.from_user.id)}\n\n"
+        "La activaciÃ³n y renovaciÃ³n se realizan "
+        "manualmente despuÃ©s de verificar el pago."
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "ðŸ’³ Suscribirme / Renovar",
+                callback_data="signal_subscribe",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "â¬…ï¸ SeÃ±ales",
+                callback_data="signals",
+            )
+        ],
+    ]
+
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
+
 
 
 # ============================================================
@@ -1208,22 +1543,22 @@ async def show_signals(query):
 
 async def show_plans(query):
     text = (
-        "💰 *Planes Apex Quant*\n\n"
+        "ðŸ’° *Planes Apex Quant*\n\n"
         "Los siguientes porcentajes representan "
         "estimaciones de referencia y NO son "
         "rendimientos garantizados.\n\n"
-        "🟢 *30 días*\n"
-        "Estimación: *8%*\n\n"
-        "🟢 *90 días*\n"
-        "Estimación: *24%*\n\n"
-        "🟢 *180 días*\n"
-        "Estimación: *48%*\n\n"
-        "🟢 *360 días*\n"
-        "Estimación: *96%*\n\n"
-        "⚠️ Los resultados pueden variar según "
+        "ðŸŸ¢ *30 dÃ­as*\n"
+        "EstimaciÃ³n: *8%*\n\n"
+        "ðŸŸ¢ *90 dÃ­as*\n"
+        "EstimaciÃ³n: *24%*\n\n"
+        "ðŸŸ¢ *180 dÃ­as*\n"
+        "EstimaciÃ³n: *48%*\n\n"
+        "ðŸŸ¢ *360 dÃ­as*\n"
+        "EstimaciÃ³n: *96%*\n\n"
+        "âš ï¸ Los resultados pueden variar segÃºn "
         "las condiciones del mercado y existe "
-        "posibilidad de pérdidas.\n\n"
-        "📌 Los porcentajes mostrados son únicamente "
+        "posibilidad de pÃ©rdidas.\n\n"
+        "ðŸ“Œ Los porcentajes mostrados son Ãºnicamente "
         "estimaciones y no representan una promesa "
         "de rendimiento."
     )
@@ -1260,19 +1595,19 @@ async def show_referrals(query, context):
     )
 
     text = (
-        "👥 *Programa de Referidos Apex Quant*\n\n"
+        "ðŸ‘¥ *Programa de Referidos Apex Quant*\n\n"
         "Invita a otras personas a conocer "
         "Apex Quant utilizando tu enlace personal.\n\n"
-        "🔗 *Tu enlace personal:*\n"
+        "ðŸ”— *Tu enlace personal:*\n"
         f"`{invite_link}`\n\n"
-        "🆔 *Tu Telegram ID:*\n"
+        "ðŸ†” *Tu Telegram ID:*\n"
         f"`{telegram_id}`\n\n"
-        f"👥 *Referidos registrados:* "
+        f"ðŸ‘¥ *Referidos registrados:* "
         f"*{referral_count}*\n\n"
-        "📌 Cada persona debe entrar mediante "
+        "ðŸ“Œ Cada persona debe entrar mediante "
         "tu enlace y pulsar *START* para que "
-        "el sistema pueda registrar la invitación.\n\n"
-        "🛡️ El sistema utiliza el ID único de "
+        "el sistema pueda registrar la invitaciÃ³n.\n\n"
+        "ðŸ›¡ï¸ El sistema utiliza el ID Ãºnico de "
         "Telegram para evitar autorreferidos y "
         "duplicados."
     )
@@ -1290,24 +1625,24 @@ async def show_referrals(query, context):
 
 async def show_language(query):
     text = (
-        "🌐 *Idioma*\n\n"
+        "ðŸŒ *Idioma*\n\n"
         "Selecciona el idioma del bot:"
     )
 
     keyboard = [
         [
             InlineKeyboardButton(
-                "🇪🇸 Español",
+                "ðŸ‡ªðŸ‡¸ EspaÃ±ol",
                 callback_data="language_es",
             ),
             InlineKeyboardButton(
-                "🇺🇸 English",
+                "ðŸ‡ºðŸ‡¸ English",
                 callback_data="language_en",
             ),
         ],
         [
             InlineKeyboardButton(
-                "⬅️ Menú principal",
+                "â¬…ï¸ MenÃº principal",
                 callback_data="main_menu",
             )
         ],
@@ -1323,15 +1658,15 @@ async def show_language(query):
 
 
 # ============================================================
-# CONFIGURACIÓN
+# CONFIGURACIÃ“N
 # ============================================================
 
 async def show_settings(query):
     text = (
-        "⚙️ *Configuración*\n\n"
-        "La sección de configuración se encuentra "
-        "en preparación.\n\n"
-        "Próximamente podrás gestionar preferencias "
+        "âš™ï¸ *ConfiguraciÃ³n*\n\n"
+        "La secciÃ³n de configuraciÃ³n se encuentra "
+        "en preparaciÃ³n.\n\n"
+        "PrÃ³ximamente podrÃ¡s gestionar preferencias "
         "de idioma, notificaciones y otras opciones."
     )
 
@@ -1343,7 +1678,7 @@ async def show_settings(query):
 
 
 # ============================================================
-# CALENDARIO — HOY
+# CALENDARIO â€” HOY
 # ============================================================
 
 async def calendar_today(query):
@@ -1358,7 +1693,7 @@ async def calendar_today(query):
 
 
 # ============================================================
-# CALENDARIO — MAÑANA
+# CALENDARIO â€” MAÃ‘ANA
 # ============================================================
 
 async def calendar_tomorrow(query):
@@ -1366,14 +1701,14 @@ async def calendar_tomorrow(query):
 
     await show_events(
         query,
-        "Calendario de mañana",
+        "Calendario de maÃ±ana",
         tomorrow,
         tomorrow,
     )
 
 
 # ============================================================
-# CALENDARIO — ESTA SEMANA
+# CALENDARIO â€” ESTA SEMANA
 # ============================================================
 
 async def calendar_week(query):
@@ -1388,7 +1723,7 @@ async def calendar_week(query):
 
 
 # ============================================================
-# CALENDARIO — ALTO IMPACTO
+# CALENDARIO â€” ALTO IMPACTO
 # ============================================================
 
 async def calendar_high(query):
@@ -1405,7 +1740,7 @@ async def calendar_high(query):
 
 
 # ============================================================
-# CALENDARIO — POR DIVISA
+# CALENDARIO â€” POR DIVISA
 # ============================================================
 
 async def calendar_currency(query):
@@ -1441,8 +1776,8 @@ async def button_handler(
 
     if data == "main_menu":
         text = (
-            "🔥 *Apex Quant*\n\n"
-            "Selecciona una opción:"
+            "ðŸ”¥ *Apex Quant*\n\n"
+            "Selecciona una opciÃ³n:"
         )
 
         await query.edit_message_text(
@@ -1459,6 +1794,18 @@ async def button_handler(
 
     if data == "signals":
         await show_signals(query)
+        return
+
+    if data == "signal_subscribe":
+        await show_signal_subscription(query)
+        return
+
+    if data == "signal_payment":
+        await show_signal_payment(query)
+        return
+
+    if data == "signal_status":
+        await show_signal_status(query)
         return
 
     if data == "plans":
@@ -1537,8 +1884,8 @@ async def button_handler(
 
     if data == "language_es":
         text = (
-            "🇪🇸 *Español seleccionado*\n\n"
-            "El idioma español está seleccionado."
+            "ðŸ‡ªðŸ‡¸ *EspaÃ±ol seleccionado*\n\n"
+            "El idioma espaÃ±ol estÃ¡ seleccionado."
         )
 
         await query.edit_message_text(
@@ -1551,7 +1898,7 @@ async def button_handler(
 
     if data == "language_en":
         text = (
-            "🇺🇸 *English selected*\n\n"
+            "ðŸ‡ºðŸ‡¸ *English selected*\n\n"
             "English is currently selected."
         )
 
@@ -1564,7 +1911,7 @@ async def button_handler(
         return
 
     text = (
-        "⚠️ Opción no disponible actualmente."
+        "âš ï¸ OpciÃ³n no disponible actualmente."
     )
 
     await query.edit_message_text(
@@ -1575,7 +1922,7 @@ async def button_handler(
 
 
 # ============================================================
-# CONFIGURACIÓN DE LA APLICACIÓN
+# CONFIGURACIÃ“N DE LA APLICACIÃ“N
 # ============================================================
 
 def build_application():
@@ -1589,6 +1936,13 @@ def build_application():
         CommandHandler(
             "start",
             start,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "activate",
+            activate_signal_command,
         )
     )
 
@@ -1623,7 +1977,7 @@ def main():
 
 
 # ============================================================
-# EJECUCIÓN
+# EJECUCIÃ“N
 # ============================================================
 
 if __name__ == "__main__":
