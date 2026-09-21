@@ -16,6 +16,64 @@ from telegram.ext import (
     ContextTypes,
 )
 
+# ============================================================
+# ADMINISTRACIÓN
+# ============================================================
+
+async def show_admin_menu(query):
+    user = query.from_user
+
+    if not user or not is_admin(user.id):
+        await query.edit_message_text(
+            "⛔ No tienes permiso para acceder a esta sección.",
+            parse_mode="Markdown",
+            reply_markup=back_main_menu(),
+        )
+        return
+
+    text = (
+        "🛠️ *Administración Apex Quant*\n\n"
+        "Selecciona una opción:"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "📡 Enviar señal",
+                callback_data="admin_send_signal",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📊 Historial de señales",
+                callback_data="admin_signal_history",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "👥 Suscriptores activos",
+                callback_data="admin_active_users",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📈 Estadísticas",
+                callback_data="admin_statistics",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ Menú principal",
+                callback_data="main_menu",
+            )
+        ],
+    ]
+
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+    )
 
 # ============================================================
 # CONFIGURACIÓN
@@ -265,7 +323,7 @@ logger = logging.getLogger("apex_quant")
 # TECLADO PRINCIPAL
 # ============================================================
 
-def main_menu():
+def main_menu(user_id=None):
     keyboard = [
         [
             InlineKeyboardButton(
@@ -294,6 +352,16 @@ def main_menu():
             ),
         ],
     ]
+
+    if user_id is not None and is_admin(user_id):
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "🛠️ Administración",
+                    callback_data="admin_menu",
+                )
+            ]
+        )
 
     return InlineKeyboardMarkup(keyboard)
 
@@ -968,7 +1036,7 @@ async def start(
         await update.message.reply_text(
             text,
             parse_mode="Markdown",
-            reply_markup=main_menu(),
+            reply_markup=main_menu(user.id),
         )
 
 
@@ -1759,7 +1827,7 @@ async def button_handler(
         await query.edit_message_text(
             text,
             parse_mode="Markdown",
-            reply_markup=main_menu(),
+            reply_markup=main_menu(query.from_user.id),
         )
 
         return
@@ -1770,6 +1838,43 @@ async def button_handler(
 
     if data == "signals":
         await show_signals(query)
+        return
+
+        if data == "admin_menu":
+        await show_admin_menu(query)
+        return
+
+        if data == "admin_send_signal":
+        if not is_admin(query.from_user.id):
+            await query.answer(
+                "⛔ No tienes permiso.",
+                show_alert=True,
+            )
+            return
+
+        await query.edit_message_text(
+            "📡 *Enviar señal*\n\n"
+            "🚧 Formulario de señales en preparación.\n\n"
+            "En el siguiente paso construiremos "
+            "el formulario completo.",
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(
+                [
+                    [
+                        InlineKeyboardButton(
+                            "⬅️ Administración",
+                            callback_data="admin_menu",
+                        )
+                    ],
+                    [
+                        InlineKeyboardButton(
+                            "🏠 Menú principal",
+                            callback_data="main_menu",
+                        )
+                    ],
+                ]
+            ),
+        )
         return
 
     if data == "signal_subscribe":
