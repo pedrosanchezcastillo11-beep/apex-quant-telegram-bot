@@ -2133,7 +2133,7 @@ async def button_handler(
         data,
     )
     
-    if data == "main_menu":
+if data == "main_menu":
     
     # ========================================================
     # MENÚ PRINCIPAL
