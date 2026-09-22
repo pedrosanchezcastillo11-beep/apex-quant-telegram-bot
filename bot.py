@@ -2377,6 +2377,55 @@ async def button_handler(
         reply_markup=back_main_menu(),
     )
 
+# ============================================================
+# ACTIVACIÓN MANUAL DE SUSCRIPCIONES
+# ============================================================
+
+async def activate_signal_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+    """Uso administrativo: /activate ID_TELEGRAM"""
+
+    user = update.effective_user
+
+    if not user or not is_admin(user.id):
+        if update.message:
+            await update.message.reply_text(
+                "⛔ No tienes permiso para utilizar este comando."
+            )
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "Uso:\n/activate ID_TELEGRAM"
+        )
+        return
+
+    target_id = context.args[0].strip()
+
+    if not target_id.isdigit():
+        await update.message.reply_text(
+            "❌ El Telegram ID debe ser numérico."
+        )
+        return
+
+    subscription = activate_subscription(
+        int(target_id)
+    )
+
+    expires_at = datetime.fromisoformat(
+        subscription["expires_at"]
+    ).strftime("%d/%m/%Y")
+
+    await update.message.reply_text(
+        "✅ *Suscripción activada*\n\n"
+        f"🔢 Telegram ID: `{target_id}`\n"
+        f"💵 Suscripción: *${SIGNALS_PRICE_USDT} USDT / 30 días*\n"
+        "🌐 Red: *BEP20*\n"
+        f"📅 Vencimiento: *{expires_at}*",
+        parse_mode="Markdown",
+    )
 
 # ============================================================
 # CONFIGURACIÓN DE LA APLICACIÓN
