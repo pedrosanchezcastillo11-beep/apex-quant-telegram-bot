@@ -2126,8 +2126,15 @@ async def button_handler(
 
     await query.answer()
 
-    data = query.data
+        data = query.data
 
+    logger.info(
+        "Callback recibido: %s",
+        data,
+    )
+
+    if data == "main_menu":
+    
     # ========================================================
     # MENÚ PRINCIPAL
     # ========================================================
