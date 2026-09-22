@@ -2002,6 +2002,117 @@ async def calendar_refresh(query):
         end_date,
     )
 
+# ============================================================
+# REFERIDOS
+# ============================================================
+
+async def show_referrals(query, context):
+    user = query.from_user
+
+    register_user(user)
+
+    telegram_id = user.id
+
+    bot_username = context.bot.username or "ApexQuantFXBot"
+
+    invite_link = (
+        f"https://t.me/{bot_username}"
+        f"?start=ref_{telegram_id}"
+    )
+
+    referral_count = get_referral_count(
+        telegram_id
+    )
+
+    text = (
+        "👥 *Programa de Referidos Apex Quant*\n\n"
+        "Invita a otras personas a conocer "
+        "Apex Quant utilizando tu enlace personal.\n\n"
+        "🔗 *Tu enlace personal:*\n"
+        f"`{invite_link}`\n\n"
+        "🔢 *Tu Telegram ID:*\n"
+        f"`{telegram_id}`\n\n"
+        f"👥 *Referidos registrados:* "
+        f"*{referral_count}*\n\n"
+        "📌 Cada persona debe entrar mediante "
+        "tu enlace y pulsar *START* para que "
+        "el sistema pueda registrar la invitación.\n\n"
+        "💰 *Comisiones por suscripciones:*\n"
+        "🥇 Nivel 1: *5%*\n"
+        "🥈 Nivel 2: *3%*\n"
+        "🥉 Nivel 3: *2%*\n\n"
+        "Las comisiones se calculan sobre las "
+        "suscripciones de señales pagadas por tus referidos "
+        "en los tres niveles.\n\n"
+        "🛡️ El sistema utiliza el ID único de "
+        "Telegram para evitar autorreferidos y "
+        "duplicados."
+    )
+
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=back_main_menu(),
+    )
+
+
+# ============================================================
+# IDIOMA
+# ============================================================
+
+async def show_language(query):
+    text = (
+        "🌐 *Idioma*\n\n"
+        "Selecciona el idioma del bot:"
+    )
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🇪🇸 Español",
+                callback_data="language_es",
+            ),
+            InlineKeyboardButton(
+                "🇺🇸 English",
+                callback_data="language_en",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                "⬅️ Menú principal",
+                callback_data="main_menu",
+            )
+        ],
+    ]
+
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
+    )
+
+
+# ============================================================
+# CONFIGURACIÓN
+# ============================================================
+
+async def show_settings(query):
+    text = (
+        "⚙️ *Configuración*\n\n"
+        "La sección de configuración se encuentra "
+        "en preparación.\n\n"
+        "Próximamente podrás gestionar preferencias "
+        "de idioma, notificaciones y otras opciones."
+    )
+
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=back_main_menu(),
+    )
+
 
 # ============================================================
 # MANEJADOR PRINCIPAL DE BOTONES
