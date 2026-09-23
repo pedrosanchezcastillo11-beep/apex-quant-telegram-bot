@@ -969,212 +969,578 @@ def activate_subscription(user_id):
         str(user_id)
     ]
 
-
-def subscription_is_active(
-    user_id
-):
-
-    """Comprueba si una suscripción está activa."""
-
-    subscription = get_subscription(
-        user_id
+        )
     )
 
-    if (
-        not subscription
-        or subscription.get(
-            "status"
-        ) != "active"
-    ):
 
-        return False
+# ============================================================
+# CALENDARIO — PETICIÓN API
+# ============================================================
+
+async def fetch_calendar_events(
+    start_date=None,
+    end_date=None,
+    impact=None,
+    currency=None,
+):
+
+    params = {}
+
+    if start_date:
+        params["start_date"] = (
+            start_date.strftime("%Y-%m-%d")
+            if hasattr(start_date, "strftime")
+            else str(start_date)
+        )
+
+    if end_date:
+        params["end_date"] = (
+            end_date.strftime("%Y-%m-%d")
+            if hasattr(end_date, "strftime")
+            else str(end_date)
+        )
+
+    if impact:
+        params["impact"] = impact
+
+    if currency:
+        params["currency"] = currency
 
     try:
 
-        expires_at = (
-            datetime.fromisoformat(
-                subscription[
-                    "expires_at"
-                ]
+        url = (
+            f"{FINANCE_CALENDAR_BASE}/events"
+        )
+
+        query_string = urlencode(
+            params
+        )
+
+        if query_string:
+            url = (
+                f"{url}?{query_string}"
+            )
+
+        request = Request(
+            url,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 "
+                    "ApexQuantBot/1.0"
+                )
+            },
+        )
+
+        with urlopen(
+            request,
+            timeout=15
+        ) as response:
+
+            raw = response.read()
+
+        data = json.loads(
+            raw.decode(
+                "utf-8"
             )
         )
 
-    except (
-        KeyError,
-        TypeError,
-        ValueError
-    ):
+        if isinstance(data, dict):
 
-        return False
+            if isinstance(
+                data.get("events"),
+                list
+            ):
+                return data["events"]
 
-    if expires_at <= datetime.now():
+            if isinstance(
+                data.get("data"),
+                list
+            ):
+                return data["data"]
 
-        data = load_subscriptions()
+        if isinstance(data, list):
+            return data
 
-        data[str(user_id)][
-            "status"
-        ] = "expired"
+    except Exception as error:
 
-        save_subscriptions(
-            data
+        logger.error(
+            "Error consultando calendario: %s",
+            error
         )
 
-        return False
-
-    return True
+    return []
 
 
-def subscription_status_text(
-    user_id
-):
+def normalize_event(event):
 
-    """Genera el estado de la suscripción."""
+    if not isinstance(
+        event,
+        dict
+    ):
+        return None
 
-    subscription = get_subscription(
-        user_id
+    date_value = (
+        event.get("date")
+        or event.get("datetime")
+        or event.get("date_time")
+        or event.get("time")
+        or ""
     )
 
-    if (
-        not subscription
-        or not subscription_is_active(
-            user_id
-        )
+    currency = (
+        event.get("currency")
+        or event.get("country")
+        or event.get("ccy")
+        or ""
+    )
+
+    impact = (
+        event.get("impact")
+        or event.get("importance")
+        or ""
+    )
+
+    title = (
+        event.get("title")
+        or event.get("event")
+        or event.get("name")
+        or "Evento económico"
+    )
+
+    actual = (
+        event.get("actual")
+        or event.get("act")
+        or ""
+    )
+
+    forecast = (
+        event.get("forecast")
+        or event.get("consensus")
+        or event.get("cons")
+        or ""
+    )
+
+    previous = (
+        event.get("previous")
+        or event.get("prev")
+        or ""
+    )
+
+    return {
+        "date": str(date_value),
+        "currency": str(currency),
+        "impact": str(impact),
+        "title": str(title),
+        "actual": str(actual),
+        "forecast": str(forecast),
+        "previous": str(previous),
+    }
+
+
+def event_impact_label(impact):
+
+    value = str(
+        impact
+    ).strip().lower()
+
+    if value in (
+        "high",
+        "alto",
+        "3",
+        "3.0",
     ):
 
+        return "🔴 ALTO"
+
+    if value in (
+        "medium",
+        "moderate",
+        "medio",
+        "2",
+        "2.0",
+    ):
+
+        return "🟠 MEDIO"
+
+    if value in (
+        "low",
+        "bajo",
+        "1",
+        "1.0",
+    ):
+
+        return "🟢 BAJO"
+
+    return (
+        f"⚪ {impact}"
+        if impact
+        else "⚪ N/D"
+    )
+
+
+def format_calendar_event(
+    event
+):
+
+    item = normalize_event(
+        event
+    )
+
+    if not item:
+        return ""
+
+    lines = []
+
+    date_text = item["date"]
+
+    if date_text:
+        lines.append(
+            f"🕒 {date_text}"
+        )
+
+    lines.append(
+        f"{event_impact_label(item['impact'])} "
+        f"• {item['currency']}"
+    )
+
+    lines.append(
+        f"📌 {item['title']}"
+    )
+
+    values = []
+
+    if item["actual"]:
+        values.append(
+            f"Act: {item['actual']}"
+        )
+
+    if item["forecast"]:
+        values.append(
+            f"Cons: {item['forecast']}"
+        )
+
+    if item["previous"]:
+        values.append(
+            f"Anterior: {item['previous']}"
+        )
+
+    if values:
+        lines.append(
+            " | ".join(values)
+        )
+
+    return "\n".join(
+        lines
+    )
+
+
+def calendar_events_text(
+    events,
+    title="📅 Calendario económico",
+):
+
+    if not events:
         return (
-            "🔴 *Suscripción no activa*\n\n"
-            f"Acceso a señales: "
-            f"*${SIGNALS_PRICE_USDT} USDT/mes*\n"
-            "Red de pago: *BEP20*"
+            f"*{title}*\n\n"
+            "No se encontraron eventos "
+            "para el periodo seleccionado.\n\n"
+            "🔗 Datos: FinanceCalendar.com"
         )
 
-    try:
+    normalized = []
 
-        expires_at = (
-            datetime.fromisoformat(
-                subscription[
-                    "expires_at"
-                ]
+    for event in events:
+
+        item = normalize_event(
+            event
+        )
+
+        if item:
+            normalized.append(
+                item
             )
+
+    normalized.sort(
+        key=lambda x: (
+            x.get("date", "")
+            or ""
+        )
+    )
+
+    blocks = []
+
+    for item in normalized[:30]:
+
+        block = format_calendar_event(
+            item
         )
 
-        remaining = max(
-            0,
-            (
-                expires_at.date()
-                - datetime.now().date()
-            ).days
-        )
-
-        expiry_text = (
-            expires_at.strftime(
-                "%d/%m/%Y"
+        if block:
+            blocks.append(
+                block
             )
-        )
 
-    except (
-        KeyError,
-        TypeError,
-        ValueError
-    ):
-
-        remaining = 0
-        expiry_text = (
-            "No disponible"
+    if not blocks:
+        return (
+            f"*{title}*\n\n"
+            "No se encontraron eventos "
+            "válidos para mostrar.\n\n"
+            "🔗 Datos: FinanceCalendar.com"
         )
 
     return (
-        "🟢 *Suscripción activa*\n\n"
-        f"📅 Vencimiento: "
-        f"*{expiry_text}*\n"
-        f"⏳ Días restantes: "
-        f"*{remaining}*\n"
-        f"💵 Precio: "
-        f"*${SIGNALS_PRICE_USDT} USDT/mes*\n"
-        "🌐 Red: *BEP20*"
+        f"*{title}*\n\n"
+        + "\n\n".join(
+            blocks
+        )
+        + "\n\n🔗 Datos: FinanceCalendar.com"
     )
 
 
-def is_admin(user_id):
+def get_day_range(offset=0):
 
-    """Comprueba si el ID pertenece al administrador."""
+    today = datetime.now().date()
 
-    return bool(
-        ADMIN_TELEGRAM_ID
-        and str(user_id)
-        == str(ADMIN_TELEGRAM_ID)
+    target = (
+        today
+        + timedelta(
+            days=offset
+        )
     )
 
-# ============================================================
-# /START
-# ============================================================
+    return target, target
 
-async def start(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
+
+def get_week_range():
+
+    today = datetime.now().date()
+
+    start = (
+        today
+        - timedelta(
+            days=today.weekday()
+        )
+    )
+
+    end = (
+        start
+        + timedelta(
+            days=6
+        )
+    )
+
+    return start, end
+
+
+async def show_calendar_today(
+    query
 ):
-    user = update.effective_user
 
-    logger.info(
-        "/start de %s con args=%s",
-        user.id if user else None,
-        context.args,
+    start, end = get_day_range(
+        0
     )
 
-    if user:
-        register_user(user)
+    events = await asyncio.to_thread(
+        fetch_calendar_events,
+        start,
+        end,
+    )
 
-    referral_registered = False
+    await query.edit_message_text(
+        calendar_events_text(
+            events,
+            "📅 Eventos de hoy",
+        ),
+        parse_mode="Markdown",
+        reply_markup=calendar_menu(),
+    )
 
-    if context.args and user:
-        referral_registered = process_referral(
-            user,
-            context.args[0],
-        )
+
+async def show_calendar_tomorrow(
+    query
+):
+
+    start, end = get_day_range(
+        1
+    )
+
+    events = await asyncio.to_thread(
+        fetch_calendar_events,
+        start,
+        end,
+    )
+
+    await query.edit_message_text(
+        calendar_events_text(
+            events,
+            "📅 Eventos de mañana",
+        ),
+        parse_mode="Markdown",
+        reply_markup=calendar_menu(),
+    )
+
+
+async def show_calendar_week(
+    query
+):
+
+    start, end = get_week_range()
+
+    events = await asyncio.to_thread(
+        fetch_calendar_events,
+        start,
+        end,
+    )
+
+    await query.edit_message_text(
+        calendar_events_text(
+            events,
+            "🗓️ Eventos de esta semana",
+        ),
+        parse_mode="Markdown",
+        reply_markup=calendar_menu(),
+    )
+
+
+async def show_calendar_high(
+    query
+):
+
+    start, end = get_week_range()
+
+    events = await asyncio.to_thread(
+        fetch_calendar_events,
+        start,
+        end,
+        impact="high",
+    )
+
+    await query.edit_message_text(
+        calendar_events_text(
+            events,
+            "🚨 Eventos de alto impacto",
+        ),
+        parse_mode="Markdown",
+        reply_markup=calendar_menu(),
+    )
+
+
+async def show_calendar_currency(
+    query
+):
 
     text = (
-        "🔥 *Bienvenido a Apex Quant*\n\n"
-        "Tu centro de información y herramientas "
-        "para mercados financieros.\n\n"
-        "📊 Mercados\n"
-        "📡 Señales\n"
-        "📋 CopyTrading\n"
-        "👥 Referidos\n"
-        "🌐 Idioma\n"
-        "⚙️ Configuración\n\n"
-        "Selecciona una opción para comenzar.\n\n"
-        "⚠️ *Aviso de riesgo:* la información, "
-        "análisis, señales y CopyTrading no garantizan "
-        "resultados. Los mercados financieros implican "
-        "riesgo y pueden producir pérdidas."
+        "💱 *Noticias por divisa*\n\n"
+        "Selecciona la divisa:"
     )
 
-    if referral_registered:
-        text += (
-            "\n\n"
-            "🎉 *¡Referido registrado correctamente!*\n"
-            "Gracias por unirte a Apex Quant mediante "
-            "un enlace de invitación."
-        )
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=currency_menu(),
+    )
 
-    if update.message:
-        await update.message.reply_text(
-            text,
-            parse_mode="Markdown",
-            reply_markup=main_menu(user.id),
-        )
+
+async def show_calendar_currency_events(
+    query,
+    currency,
+):
+
+    start, end = get_week_range()
+
+    events = await asyncio.to_thread(
+        fetch_calendar_events,
+        start,
+        end,
+        currency=currency,
+    )
+
+    await query.edit_message_text(
+        calendar_events_text(
+            events,
+            f"💱 Eventos {currency}",
+        ),
+        parse_mode="Markdown",
+        reply_markup=currency_menu(),
+    )
+
+
+async def show_calendar_refresh(
+    query
+):
+
+    start, end = get_day_range(
+        0
+    )
+
+    events = await asyncio.to_thread(
+        fetch_calendar_events,
+        start,
+        end,
+    )
+
+    await query.edit_message_text(
+        calendar_events_text(
+            events,
+            "🔄 Calendario actualizado",
+        ),
+        parse_mode="Markdown",
+        reply_markup=calendar_menu(),
+    )
 
 
 # ============================================================
-# MERCADOS
+# NOTICIAS / RIESGO
 # ============================================================
 
-async def show_markets(query):
+async def show_high_news(
+    query
+):
+
+    start, end = get_week_range()
+
+    events = await asyncio.to_thread(
+        fetch_calendar_events,
+        start,
+        end,
+        impact="high",
+    )
+
+    text = calendar_events_text(
+        events,
+        "🚨 Noticias de alto impacto",
+    )
+
+    await query.edit_message_text(
+        text,
+        parse_mode="Markdown",
+        reply_markup=markets_menu(),
+    )
+
+
+async def show_currency_news(
+    query
+):
+
+    await show_calendar_currency(
+        query
+    )
+
+
+async def show_news_risk(
+    query
+):
+
     text = (
-        "📊 *Mercados*\n\n"
-        "Consulta información y análisis relacionados "
-        "con los mercados financieros.\n\n"
-        "Selecciona una opción:"
+        "⚠️ *Riesgo de noticias*\n\n"
+        "Los eventos económicos de alto impacto "
+        "pueden aumentar la volatilidad y provocar "
+        "movimientos rápidos en los precios.\n\n"
+        "Antes de abrir una operación, revisa el "
+        "calendario económico y considera la posible "
+        "exposición a noticias.\n\n"
+        "⚠️ Esta información es educativa y no "
+        "garantiza resultados."
     )
 
     await query.edit_message_text(
@@ -1185,620 +1551,45 @@ async def show_markets(query):
 
 
 # ============================================================
-# CALENDARIO
-# ============================================================
-
-async def show_calendar(query):
-    text = (
-        "📅 *Calendario económico*\n\n"
-        "Consulta eventos económicos que pueden "
-        "generar volatilidad en los mercados.\n\n"
-        "Selecciona el periodo que deseas consultar.\n\n"
-        "🔗 Datos: FinanceCalendar.com"
-    )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=calendar_menu(),
-    )
-
-
-# ============================================================
-# NOTICIAS ALTO IMPACTO
-# ============================================================
-
-async def show_high_news(query):
-    today = today_date()
-    end_date = today + timedelta(days=7)
-
-    await show_events(
-        query,
-        "Noticias de alto impacto",
-        today,
-        end_date,
-        impact="high",
-    )
-
-
-# ============================================================
-# RIESGO DE NOTICIAS
-# ============================================================
-
-async def show_news_risk(query):
-    today = today_date()
-    end_date = today + timedelta(days=1)
-
-    events = await get_calendar_events(
-        today,
-        end_date,
-        impact="high",
-    )
-
-    if events:
-        text = (
-            "⚠️ *Riesgo de noticias*\n\n"
-            "Se detectaron eventos de *alto impacto* "
-            "en el periodo actual.\n\n"
-            "Antes de ejecutar una operación, "
-            "revisa especialmente estos eventos.\n\n"
-        )
-
-        for event in events[:8]:
-            title = event.get(
-                "title",
-                event.get(
-                    "name",
-                    "Evento",
-                ),
-            )
-
-            time_et = event.get(
-                "time_et",
-                "hora no disponible",
-            )
-
-            text += (
-                f"🔴 {time_et} ET — {title}\n"
-            )
-
-        text += (
-            "\n⚠️ Una noticia puede provocar "
-            "volatilidad, spread elevado y "
-            "movimientos bruscos.\n\n"
-            "🔗 Fuente: FinanceCalendar.com"
-        )
-
-    else:
-        text = (
-            "⚠️ *Riesgo de noticias*\n\n"
-            "No se encontraron eventos de alto impacto "
-            "para el periodo consultado.\n\n"
-            "Esto no elimina el riesgo de mercado.\n\n"
-            "🔗 Fuente: FinanceCalendar.com"
-        )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=back_main_menu(),
-    )
-
-
-# ============================================================
-# NOTICIAS POR DIVISA
-# ============================================================
-
-async def show_currency_news(query):
-    text = (
-        "💱 *Noticias por divisa*\n\n"
-        "Selecciona la moneda que deseas analizar:"
-    )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=currency_menu(),
-    )
-
-
-# ============================================================
-# FILTRO POR DIVISA
-# ============================================================
-
-CURRENCY_KEYWORDS = {
-    "USD": [
-        "united states",
-        "us ",
-        "u.s.",
-        "federal reserve",
-        "fed ",
-        "dollar",
-        "usd",
-        "american",
-    ],
-
-    "EUR": [
-        "euro",
-        "eurozone",
-        "euro area",
-        "european central bank",
-        "ecb",
-        "eur",
-        "germany",
-        "france",
-        "italy",
-        "spain",
-    ],
-
-    "GBP": [
-        "united kingdom",
-        "uk ",
-        "britain",
-        "british",
-        "bank of england",
-        "boe",
-        "pound",
-        "gbp",
-    ],
-
-    "JPY": [
-        "japan",
-        "japanese",
-        "bank of japan",
-        "boj",
-        "yen",
-        "jpy",
-    ],
-
-    "CHF": [
-        "switzerland",
-        "swiss",
-        "swiss national bank",
-        "snb",
-        "franc",
-        "chf",
-    ],
-
-    "CAD": [
-        "canada",
-        "canadian",
-        "bank of canada",
-        "boc",
-        "cad",
-    ],
-
-    "AUD": [
-        "australia",
-        "australian",
-        "reserve bank of australia",
-        "rba",
-        "aud",
-    ],
-
-    "NZD": [
-        "new zealand",
-        "new zealand dollar",
-        "reserve bank of new zealand",
-        "rbnz",
-        "nzd",
-    ],
-}
-
-
-def event_matches_currency(
-    event,
-    currency,
-):
-    keywords = CURRENCY_KEYWORDS.get(
-        currency,
-        [],
-    )
-
-    currency_fields = [
-        event.get("currency"),
-        event.get("currency_code"),
-        event.get("curr"),
-        event.get("ccy"),
-    ]
-
-    for value in currency_fields:
-        if value:
-            if str(value).upper() == currency.upper():
-                return True
-
-    searchable = " ".join(
-        [
-            str(event.get("name", "")),
-            str(event.get("title", "")),
-            str(event.get("category", "")),
-        ]
-    ).lower()
-
-    for keyword in keywords:
-        if keyword.lower() in searchable:
-            return True
-
-    return False
-
-
-# ============================================================
-# EVENTOS POR DIVISA
-# ============================================================
-
-async def currency_events(
-    query,
-    currency,
-):
-    today = today_date()
-    end_date = today + timedelta(days=7)
-
-    events = await get_calendar_events(
-        today,
-        end_date,
-    )
-
-    filtered = [
-        event
-        for event in events
-        if event_matches_currency(
-            event,
-            currency,
-        )
-    ]
-
-    if not filtered:
-        text = (
-            f"💱 *Noticias {currency}*\n\n"
-            "No se encontraron eventos relacionados "
-            f"con {currency} durante los próximos días.\n\n"
-            "🔗 Fuente: FinanceCalendar.com"
-        )
-
-    else:
-        lines = [
-            f"💱 *Noticias {currency}*",
-            "",
-        ]
-
-        for event in filtered[:12]:
-            event_date = event.get(
-                "date",
-                "",
-            )
-
-            title = event.get(
-                "title",
-                event.get(
-                    "name",
-                    "Evento",
-                ),
-            )
-
-            time_et = event.get(
-                "time_et",
-                "hora no disponible",
-            )
-
-            impact = impact_label(
-                event.get("impact")
-            )
-
-            lines.append(
-                f"📆 {event_date}"
-            )
-
-            lines.append(
-                f"🕐 {time_et} ET"
-            )
-
-            lines.append(
-                f"📌 {title}"
-            )
-
-            lines.append(
-                f"📊 {impact}"
-            )
-
-            consensus = event.get(
-                "consensus"
-            )
-
-            if consensus:
-                lines.append(
-                    f"🔮 Consenso: {consensus}"
-                )
-
-            prior = event.get("prior")
-
-            if prior:
-                lines.append(
-                    f"◀️ Anterior: {prior}"
-                )
-
-            lines.append(
-                "──────────────"
-            )
-
-        lines.append(
-            "🔗 Fuente: FinanceCalendar.com"
-        )
-
-        text = "\n".join(lines)
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=currency_menu(),
-    )
-
-
-# ============================================================
 # ANÁLISIS DIARIO
 # ============================================================
 
-async def show_daily_analysis(query):
+async def show_daily_analysis(
+    query
+):
+
     text = (
-        "📈 *Análisis diario Apex Quant*\n\n"
-        "La metodología de análisis contempla:\n\n"
-        "🔹 BOS — Break of Structure\n"
-        "🔹 FVG — Fair Value Gap\n"
-        "🔹 Liquidez\n"
-        "🔹 Volumen\n"
-        "🔹 RSI 14\n"
-        "🔹 HH / HL\n"
-        "🔹 Estructura de mercado\n\n"
-        "🎯 Instrumentos principales:\n"
+        "📈 *Análisis diario — Apex Quant*\n\n"
+
+        "🧭 *Estructura de análisis*\n"
+        "H4 – Dirección\n"
+        "H1 – Liquidez\n"
+        "M5 – Entrada\n\n"
+
+        "🔎 *Elementos analizados*\n"
+        "• BOS\n"
+        "• FVG\n"
+        "• Liquidez\n"
+        "• Volumen\n"
+        "• RSI 14\n"
+        "• HH / HL\n"
+        "• Estructura de mercado\n\n"
+
+        "💱 *Instrumentos*\n"
         "• EUR/USD\n"
         "• GBP/USD\n"
         "• GBP/JPY\n\n"
-        "⏱️ *Marcos de análisis:*\n"
-        "• H4 — Dirección\n"
-        "• H1 — Liquidez\n"
-        "• M5 — Entrada\n\n"
-        "⚠️ El análisis es informativo. "
-        "Ninguna configuración técnica garantiza "
-        "una operación ganadora."
+
+        "⚠️ El análisis es una estimación basada en "
+        "condiciones de mercado y no garantiza resultados."
     )
 
     await query.edit_message_text(
         text,
         parse_mode="Markdown",
-        reply_markup=back_main_menu(),
-    )
+        reply_markup=markets_menu(),
 
-
-# ============================================================
-# SEÑALES
-# ============================================================
-
-async def show_signals(query):
-    text = (
-        "📡 *Señales Apex Quant*\n\n"
-        "Accede a las señales de trading de Apex Quant "
-        "mediante una suscripción mensual.\n\n"
-        f"💵 *Precio: ${SIGNALS_PRICE_USDT} USDT / mes*\n"
-        "🌐 *Red de pago: USDT BEP20*\n\n"
-        "La suscripción te permitirá recibir las señales "
-        "publicadas por Apex Quant durante el periodo activo.\n\n"
-        "⚠️ *Aviso de riesgo:* las señales son información "
-        "y análisis de mercado. No garantizan ganancias. "
-        "El trading implica riesgo y puede producir pérdidas."
-    )
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "💳 Suscribirme — $30",
-                callback_data="signal_subscribe",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📋 Cómo pagar",
-                callback_data="signal_payment",
-            ),
-            InlineKeyboardButton(
-                "📅 Mi suscripción",
-                callback_data="signal_status",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "⬅️ Menú principal",
-                callback_data="main_menu",
-            )
-        ],
-    ]
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
-    )
-
-
-# ============================================================
-# COPYTRADING
-# ============================================================
-
-# IMPORTANTE:
-# Coloca aquí el enlace de registro de OneRoyal cuando
-# tengas confirmado el enlace exacto que quieres utilizar.
-ONEROYAL_REGISTER_URL = os.getenv(
-    "ONEROYAL_REGISTER_URL",
-    ""
-)
-
-
-async def show_copytrading(query):
-    text = (
-        "📋 *CopyTrading ApexQuant*\n\n"
-        "Sigue la estrategia de trading de "
-        "ApexQuant mediante CopyTrading.\n\n"
-        "📈 Las operaciones realizadas por la cuenta "
-        "ApexQuant pueden ser replicadas en la cuenta "
-        "del usuario de acuerdo con la configuración "
-        "seleccionada en OneRoyal.\n\n"
-        "🚀 *¿Cómo comenzar?*\n"
-        "1️⃣ Regístrate en OneRoyal.\n"
-        "2️⃣ Abre o utiliza tu cuenta de trading.\n"
-        "3️⃣ Accede a la sección de CopyTrading.\n"
-        "4️⃣ Busca la estrategia o proveedor "
-        "*ApexQuant*.\n"
-        "5️⃣ Selecciona la estrategia y configura "
-        "tu nivel de riesgo.\n"
-        "6️⃣ Activa el CopyTrading.\n\n"
-        "⚠️ *Aviso de riesgo:* CopyTrading no garantiza "
-        "ganancias. Las operaciones pueden generar "
-        "ganancias o pérdidas. Cada usuario debe "
-        "comprender los riesgos antes de activar "
-        "el servicio."
-    )
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "🚀 Registrarme en OneRoyal",
-                callback_data="copy_register",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📈 Seguir ApexQuant",
-                callback_data="copy_follow",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📘 ¿Cómo funciona?",
-                callback_data="copy_info",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "⬅️ Menú principal",
-                callback_data="main_menu",
-            )
-        ],
-    ]
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
-    )
-
-
-async def show_copy_register(query):
-    if ONEROYAL_REGISTER_URL:
-        text = (
-            "🚀 *Registro OneRoyal*\n\n"
-            "Utiliza el siguiente botón para abrir "
-            "el registro oficial de OneRoyal.\n\n"
-            "Después de crear tu cuenta, podrás "
-            "continuar con la configuración de "
-            "CopyTrading y buscar *ApexQuant*.\n\n"
-            "⚠️ Recuerda que abrir una cuenta y "
-            "realizar operaciones implica riesgo."
-        )
-
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    "🚀 Abrir cuenta OneRoyal",
-                    url=ONEROYAL_REGISTER_URL,
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "⬅️ CopyTrading",
-                    callback_data="copytrading",
-                )
-            ],
-        ]
-
-    else:
-        text = (
-            "🚀 *Registro OneRoyal*\n\n"
-            "El enlace de registro de OneRoyal "
-            "todavía no ha sido configurado en el bot.\n\n"
-            "El administrador debe añadir la variable:\n\n"
-            "`ONEROYAL_REGISTER_URL`\n\n"
-            "Una vez configurada, aparecerá aquí "
-            "el botón de registro."
-        )
-
-        keyboard = [
-            [
-                InlineKeyboardButton(
-                    "⬅️ CopyTrading",
-                    callback_data="copytrading",
-                )
-            ]
-        ]
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
-    )
-
-
-async def show_copy_follow(query):
-    text = (
-        "📈 *Seguir estrategia ApexQuant*\n\n"
-        "Después de registrarte en OneRoyal:\n\n"
-        "1️⃣ Accede a tu cuenta.\n"
-        "2️⃣ Entra en la sección de CopyTrading.\n"
-        "3️⃣ Busca *ApexQuant*.\n"
-        "4️⃣ Selecciona la estrategia disponible.\n"
-        "5️⃣ Revisa las condiciones y parámetros.\n"
-        "6️⃣ Configura el nivel de riesgo que "
-        "consideres adecuado para tu cuenta.\n"
-        "7️⃣ Activa el seguimiento.\n\n"
-        "📌 La disponibilidad de la estrategia "
-        "ApexQuant dependerá de que la cuenta "
-        "proveedora esté correctamente configurada "
-        "en OneRoyal.\n\n"
-        "⚠️ Los resultados pasados no garantizan "
-        "resultados futuros. El CopyTrading implica "
-        "riesgo de pérdida."
-    )
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "🚀 Registrarme en OneRoyal",
-                callback_data="copy_register",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📘 ¿Cómo funciona?",
-                callback_data="copy_info",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "⬅️ CopyTrading",
-                callback_data="copytrading",
-            )
-        ],
-    ]
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
+                ),
     )
 
 
@@ -1917,6 +1708,7 @@ async def show_referral_levels(query):
         ),
     )
 
+
 # ============================================================
 # CALENDARIO — HOY
 # ============================================================
@@ -2001,6 +1793,7 @@ async def calendar_refresh(query):
         today,
         end_date,
     )
+
 
 # ============================================================
 # REFERIDOS
@@ -2122,7 +1915,6 @@ async def button_handler(
     update: Update,
     context: ContextTypes.DEFAULT_TYPE,
 ):
-    
     query = update.callback_query
 
     await query.answer()
@@ -2133,9 +1925,7 @@ async def button_handler(
         "Callback recibido: %s",
         data,
     )
-    
-if data == "main_menu":
-    
+
     # ========================================================
     # MENÚ PRINCIPAL
     # ========================================================
@@ -2411,6 +2201,12 @@ if data == "main_menu":
     if data == "settings":
         await show_settings(query)
         return
+    )
+
+            reply_markup=back_main_menu(),
+        )
+
+        return
 
     # ========================================================
     # CALENDARIO
@@ -2496,6 +2292,7 @@ if data == "main_menu":
         reply_markup=back_main_menu(),
     )
 
+
 # ============================================================
 # ACTIVACIÓN MANUAL DE SUSCRIPCIONES
 # ============================================================
@@ -2545,6 +2342,7 @@ async def activate_signal_command(
         f"📅 Vencimiento: *{expires_at}*",
         parse_mode="Markdown",
     )
+
 
 # ============================================================
 # CONFIGURACIÓN DE LA APLICACIÓN
