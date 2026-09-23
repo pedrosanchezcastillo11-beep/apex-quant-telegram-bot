@@ -584,14 +584,6 @@ def main_menu(user_id=None):
                 callback_data="funding_menu",
             ),
         ],
-    
-
-        [
-            InlineKeyboardButton(
-                "💎 Fondeo",
-                callback_data="funding_menu",
-            ),
-        ],
 
         [
             InlineKeyboardButton(
@@ -2669,7 +2661,33 @@ async def activate_signal_command(
         parse_mode="Markdown",
     )
 
+# ============================================================
+# COMANDO /START
+# ============================================================
 
+async def start(update: Update, context):
+    user = update.effective_user
+
+    text = (
+        "🔥 <b>Bienvenido a Apex Quant</b>\n\n"
+        "Centro de información y herramientas "
+        "para mercados financieros.\n\n"
+        "📊 Mercados\n"
+        "📡 Señales\n"
+        "📋 CopyTrading\n"
+        "👥 Referidos\n"
+        "💎 Fondeo\n\n"
+        "⚠️ La información, análisis y señales "
+        "no garantizan resultados. Los mercados "
+        "financieros implican riesgo de pérdidas."
+    )
+
+    await update.message.reply_text(
+        text=text,
+        reply_markup=main_menu(user.id),
+        parse_mode="HTML",
+    )
+    
 # ============================================================
 # CONFIGURACIÓN DE LA APLICACIÓN
 # ============================================================
