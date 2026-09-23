@@ -566,7 +566,7 @@ def main_menu(user_id=None):
             ),
         ],
 
-        [
+       [
             InlineKeyboardButton(
                 "📋 CopyTrading",
                 callback_data="copytrading",
@@ -575,6 +575,21 @@ def main_menu(user_id=None):
             InlineKeyboardButton(
                 "👥 Referidos",
                 callback_data="referrals",
+            ),
+        ],
+
+        [
+            InlineKeyboardButton(
+                "💎 Fondeo",
+                callback_data="funding_menu",
+            ),
+        ],
+    
+
+        [
+            InlineKeyboardButton(
+                "💎 Fondeo",
+                callback_data="funding_menu",
             ),
         ],
 
@@ -609,6 +624,301 @@ def main_menu(user_id=None):
         keyboard
     )
 
+# ============================================================
+# 💎 MENÚ DE FONDEO — QVAFUNDED
+# ============================================================
+
+def funding_menu():
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🏦 ¿Qué es QvaFunded?",
+                    callback_data="funding_about",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "💼 Tipos de cuentas",
+                    callback_data="funding_accounts",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "⭐ QVA Flex",
+                    callback_data="funding_flex",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "⚠️ Importante",
+                    callback_data="funding_warning",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🚀 Ir a QvaFunded",
+                    callback_data="funding_link",
+                )
+            ],
+[
+    InlineKeyboardButton(
+        "🔙 Volver",
+        callback_data="main_menu",
+    )
+],
+        ]
+    )
+
+
+async def show_funding_menu(query):
+
+    text = (
+        "💎 <b>CUENTAS DE FONDEO</b>\n\n"
+        "Accede a información sobre QvaFunded, "
+        "sus programas de fondeo y las condiciones "
+        "de sus cuentas.\n\n"
+        "🏦 Conoce QvaFunded\n"
+        "💼 Compara sus cuentas\n"
+        "⭐ Conoce QVA Flex\n"
+        "⚠️ Revisa las condiciones importantes\n\n"
+        "👇 Selecciona una opción:"
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=funding_menu(),
+        parse_mode="HTML",
+    )
+
+
+async def show_funding_about(query):
+
+    text = (
+        "🏦 <b>¿QUÉ ES QVAFUNDED?</b>\n\n"
+        "QvaFunded es una empresa de fondeo que ofrece "
+        "programas de evaluación para traders.\n\n"
+        "Su modelo permite al trader demostrar su capacidad "
+        "de gestión y operativa siguiendo las reglas "
+        "establecidas por cada programa.\n\n"
+        "📊 Ofrece diferentes tipos de cuentas y tamaños "
+        "de capital.\n\n"
+        "💻 Consulta siempre las condiciones actuales "
+        "antes de adquirir una evaluación.\n\n"
+        "⚠️ Las reglas, precios y condiciones pueden cambiar."
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "💼 Tipos de cuentas",
+                        callback_data="funding_accounts",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "⭐ Ver QVA Flex",
+                        callback_data="funding_flex",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Volver",
+                        callback_data="funding_menu",
+                    )
+                ],
+            ]
+        ),
+        parse_mode="HTML",
+    )
+
+
+async def show_funding_accounts(query):
+
+    text = (
+        "💼 <b>TIPOS DE CUENTAS QVAFUNDED</b>\n\n"
+        "QvaFunded ofrece diferentes programas de "
+        "evaluación con distintas condiciones.\n\n"
+        "⭐ <b>QVA Flex</b>\n"
+        "Programa de 1 fase con objetivo del 6% y "
+        "trailing drawdown.\n\n"
+        "💼 <b>Profesional</b>\n"
+        "Programa con condiciones y reglas propias.\n\n"
+        "📊 <b>Ligera</b>\n"
+        "Programa diseñado con condiciones diferentes "
+        "de riesgo y evaluación.\n\n"
+        "⚠️ Cada programa tiene sus propias reglas. "
+        "Consulta siempre las condiciones vigentes "
+        "directamente en QvaFunded."
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "⭐ Ver QVA Flex",
+                        callback_data="funding_flex",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🚀 Ir a QvaFunded",
+                        callback_data="funding_link",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Volver",
+                        callback_data="funding_menu",
+                    )
+                ],
+            ]
+        ),
+        parse_mode="HTML",
+    )
+
+
+async def show_funding_flex(query):
+
+    text = (
+        "⭐ <b>QVA FLEX — CUENTA $3K</b>\n\n"
+        "🎯 <b>Objetivo:</b> $180 (6%)\n"
+        "📊 <b>Evaluación:</b> 1 fase\n"
+        "📉 <b>Drawdown:</b> Trailing EOD\n"
+        "🛑 <b>Trailing inicial:</b> $120\n"
+        "💰 <b>Pérdida diaria:</b> Ninguna\n"
+        "📅 <b>Días mínimos:</b> Ninguno\n"
+        "⚖️ <b>Consistencia:</b> 50%\n"
+        "📰 <b>Trading en noticias:</b> Sí\n"
+        "⚡ <b>Apalancamiento:</b> 1:100\n"
+        "💵 <b>Reparto:</b> 80/20\n"
+        "🤖 <b>EAs:</b> No permitidos\n"
+        "⚡ <b>Scalping:</b> Sí\n\n"
+        "📌 <b>Consistencia</b>\n"
+        "El mejor día no puede superar el 50% del "
+        "objetivo de beneficio.\n\n"
+        "📌 <b>Trailing EOD</b>\n"
+        "El drawdown se calcula según las condiciones "
+        "establecidas por QvaFunded.\n\n"
+        "⚠️ Las reglas, precios y promociones pueden "
+        "cambiar. Consulta siempre las condiciones "
+        "actuales directamente en QvaFunded."
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🚀 Ir a QvaFunded",
+                        callback_data="funding_link",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "⚠️ Importante",
+                        callback_data="funding_warning",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Volver",
+                        callback_data="funding_menu",
+                    )
+                ],
+            ]
+        ),
+        parse_mode="HTML",
+    )
+
+
+async def show_funding_warning(query):
+
+    text = (
+        "⚠️ <b>IMPORTANTE — CUENTAS DE FONDEO</b>\n\n"
+        "Las señales de <b>Apex Quant</b> NO deben "
+        "utilizarse para intentar superar un challenge "
+        "de QvaFunded.\n\n"
+        "🚫 No utilices las señales de Apex Quant como "
+        "método automático o directo para intentar "
+        "aprobar una evaluación de fondeo.\n\n"
+        "📋 El trader es responsable de realizar su propia "
+        "operativa y de cumplir en todo momento las reglas "
+        "establecidas por QvaFunded.\n\n"
+        "⚠️ Apex Quant no garantiza la aprobación de ningún "
+        "challenge ni los resultados de una cuenta de fondeo.\n\n"
+        "📌 Antes de operar una cuenta de fondeo, revisa "
+        "siempre las reglas y condiciones vigentes de "
+        "QvaFunded."
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🚀 Ir a QvaFunded",
+                        callback_data="funding_link",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Volver",
+                        callback_data="funding_menu",
+                    )
+                ],
+            ]
+        ),
+        parse_mode="HTML",
+    )
+
+
+async def show_funding_link(query):
+
+    referral_url = os.getenv(
+        "QVAFUNDED_REFERRAL_URL",
+        "https://www.qvafunded.live",
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🚀 Abrir QvaFunded",
+                    url=referral_url,
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 Volver",
+                    callback_data="funding_menu",
+                )
+            ],
+        ]
+    )
+
+    text = (
+        "🚀 <b>QVA FUNDED</b>\n\n"
+        "Accede directamente a QvaFunded para consultar "
+        "las cuentas, precios y condiciones actuales.\n\n"
+        "💎 Revisa siempre las reglas vigentes antes de "
+        "adquirir cualquier evaluación.\n\n"
+        "👇 Pulsa el botón para acceder:"
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
 
 # ============================================================
 # MENÚ MERCADOS
@@ -968,9 +1278,6 @@ def activate_subscription(user_id):
     return data[
         str(user_id)
     ]
-
-        )
-    )
 
 
 # ============================================================
@@ -1978,6 +2285,34 @@ async def button_handler(
 
     if data == "copy_info":
         await show_copy_info(query)
+        return
+
+    # ========================================================
+    # 💎 FONDEO — QVAFUNDED
+    # ========================================================
+
+    if data == "funding_menu":
+        await show_funding_menu(query)
+        return
+
+    if data == "funding_about":
+        await show_funding_about(query)
+        return
+
+    if data == "funding_accounts":
+        await show_funding_accounts(query)
+        return
+
+    if data == "funding_flex":
+        await show_funding_flex(query)
+        return
+
+    if data == "funding_warning":
+        await show_funding_warning(query)
+        return
+
+    if data == "funding_link":
+        await show_funding_link(query)
         return
 
     # ========================================================
