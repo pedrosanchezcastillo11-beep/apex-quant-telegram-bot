@@ -1895,10 +1895,7 @@ async def show_daily_analysis(
         text,
         parse_mode="Markdown",
         reply_markup=markets_menu(),
-
-                ),
     )
-
 
 async def show_copy_info(query):
     text = (
