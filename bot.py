@@ -2272,7 +2272,7 @@ async def button_handler(
     # ========================================================
 
     if data == "copytrading":
-        await show_copytrading(query)
+        await show_copy_info(query)
         return
 
     if data == "copy_register":
