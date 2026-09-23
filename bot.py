@@ -2533,12 +2533,6 @@ async def button_handler(
     if data == "settings":
         await show_settings(query)
         return
-    )
-
-            reply_markup=back_main_menu(),
-        )
-
-        return
 
     # ========================================================
     # CALENDARIO
