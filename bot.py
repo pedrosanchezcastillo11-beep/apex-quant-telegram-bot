@@ -545,7 +545,18 @@ logger = logging.getLogger(
     "apex_quant"
 )
 
+# ============================================================
+# VERIFICACIÓN DE ADMINISTRADOR
+# ============================================================
 
+def is_admin(user_id):
+    admin_id = os.getenv("ADMIN_TELEGRAM_ID")
+
+    if not admin_id:
+        return False
+
+    return str(user_id) == str(admin_id)
+    
 # ============================================================
 # TECLADO PRINCIPAL
 # ============================================================
