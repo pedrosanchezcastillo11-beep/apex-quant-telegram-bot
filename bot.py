@@ -17,66 +17,6 @@ from telegram.ext import (
 )
 
 # ============================================================
-# ADMINISTRACIÓN
-# ============================================================
-
-async def show_admin_menu(query):
-    user = query.from_user
-
-    if not user or not is_admin(user.id):
-        await query.edit_message_text(
-            "⛔ No tienes permiso para acceder a esta sección.",
-            parse_mode="Markdown",
-            reply_markup=back_main_menu(),
-        )
-        return
-
-    text = (
-        "🛠️ *Administración Apex Quant*\n\n"
-        "Selecciona una opción:"
-    )
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "📡 Enviar señal",
-                callback_data="admin_send_signal",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📊 Historial de señales",
-                callback_data="admin_signal_history",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "👥 Suscriptores activos",
-                callback_data="admin_active_users",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "📈 Estadísticas",
-                callback_data="admin_statistics",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "⬅️ Menú principal",
-                callback_data="main_menu",
-            )
-        ],
-    ]
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-    )
-
-
-# ============================================================
 # CONFIGURACIÓN
 # ============================================================
 
@@ -86,23 +26,14 @@ if not BOT_TOKEN:
     raise RuntimeError("Falta la variable de entorno BOT_TOKEN")
 
 
-# ============================================================
-# REFERIDOS — ALMACENAMIENTO
-# ============================================================
-
 REFERRALS_FILE = os.getenv(
     "REFERRALS_FILE",
-    "referrals.json"
+    "referrals.json",
 )
-
-
-# ============================================================
-# SEÑALES — SUSCRIPCIONES
-# ============================================================
 
 SUBSCRIPTIONS_FILE = os.getenv(
     "SUBSCRIPTIONS_FILE",
-    "subscriptions.json"
+    "subscriptions.json",
 )
 
 SIGNALS_PRICE_USDT = 30
@@ -110,411 +41,33 @@ SIGNALS_DURATION_DAYS = 30
 
 USDT_BEP20_ADDRESS = os.getenv(
     "USDT_BEP20_ADDRESS",
-    ""
+    "",
 )
 
 ADMIN_TELEGRAM_ID = os.getenv(
     "ADMIN_TELEGRAM_ID",
-    ""
-)
-
-
-def load_referrals():
-    """Carga los datos de referidos desde el archivo JSON."""
-
-    try:
-        if not os.path.exists(REFERRALS_FILE):
-            return {
-                "users": {},
-                "referrals": {}
-            }
-
-        with open(
-            REFERRALS_FILE,
-            "r",
-            encoding="utf-8"
-        ) as file:
-            data = json.load(file)
-
-        if not isinstance(data, dict):
-            raise ValueError(
-                "Formato de referidos inválido"
-            )
-
-        data.setdefault("users", {})
-        data.setdefault("referrals", {})
-
-        return data
-
-    except Exception as error:
-
-        logger.error(
-            "Error cargando referidos: %s",
-            error
-        )
-
-        try:
-
-            if os.path.exists(
-                REFERRALS_FILE
-            ):
-
-                backup = (
-                    f"{REFERRALS_FILE}.corrupt"
-                )
-
-                os.replace(
-                    REFERRALS_FILE,
-                    backup
-                )
-
-                logger.error(
-                    "Archivo dañado respaldado en %s",
-                    backup
-                )
-
-        except Exception as backup_error:
-
-            logger.error(
-                "No se pudo respaldar: %s",
-                backup_error
-            )
-
-        return {
-            "users": {},
-            "referrals": {}
-        }
-
-
-def save_referrals(data):
-    """Guarda los datos de referidos en el archivo JSON."""
-
-    try:
-
-        temp_file = (
-            f"{REFERRALS_FILE}.tmp"
-        )
-
-        with open(
-            temp_file,
-            "w",
-            encoding="utf-8"
-        ) as file:
-
-            json.dump(
-                data,
-                file,
-                ensure_ascii=False,
-                indent=2
-            )
-
-        os.replace(
-            temp_file,
-            REFERRALS_FILE
-        )
-
-    except Exception as error:
-
-        logger.error(
-            "Error guardando referidos: %s",
-            error
-        )
-
-
-def register_user(user):
-    """Registra un usuario mediante su Telegram ID."""
-
-    if not user:
-        return
-
-    data = load_referrals()
-
-    user_id = str(user.id)
-
-    if user_id not in data["users"]:
-
-        data["users"][user_id] = {
-            "telegram_id": user.id,
-            "username": user.username or "",
-            "first_name": user.first_name or "",
-            "referred_by": None
-        }
-
-        data["referrals"].setdefault(
-            user_id,
-            []
-        )
-
-    else:
-
-        data["users"][user_id]["username"] = (
-            user.username or ""
-        )
-
-        data["users"][user_id]["first_name"] = (
-            user.first_name or ""
-        )
-
-        data["referrals"].setdefault(
-            user_id,
-            []
-        )
-
-    save_referrals(data)
-
-    return data
-
-
-def process_referral(
-    user,
-    start_parameter
-):
-    """
-    Procesa un enlace:
-
-    /start ref_123456789
-
-    El usuario conserva siempre su referente
-    original.
-    """
-
-    if not user or not start_parameter:
-        return False
-
-    parameter = str(
-        start_parameter
-    ).strip()
-
-    if not parameter.startswith(
-        "ref_"
-    ):
-        return False
-
-    referrer_id = (
-        parameter[4:]
-        .strip()
-    )
-
-    if not referrer_id.isdigit():
-
-        logger.warning(
-            "Código de referido inválido: %s",
-            parameter
-        )
-
-        return False
-
-    user_id = str(user.id)
-
-    # ========================================================
-    # BLOQUEAR AUTO-REFERENCIA
-    # ========================================================
-
-    if referrer_id == user_id:
-
-        logger.info(
-            "Auto-referencia bloqueada para Telegram ID %s",
-            user_id
-        )
-
-        return False
-
-    data = load_referrals()
-
-    # ========================================================
-    # REGISTRAR USUARIO
-    # ========================================================
-
-    if user_id not in data["users"]:
-
-        data["users"][user_id] = {
-            "telegram_id": user.id,
-            "username": user.username or "",
-            "first_name": user.first_name or "",
-            "referred_by": None
-        }
-
-    else:
-
-        data["users"][user_id]["username"] = (
-            user.username or ""
-        )
-
-        data["users"][user_id]["first_name"] = (
-            user.first_name or ""
-        )
-
-    data["referrals"].setdefault(
-        user_id,
-        []
-    )
-
-    # ========================================================
-    # CREAR REFERENTE SI NO EXISTE
-    # ========================================================
-
-    if referrer_id not in data["users"]:
-
-        logger.warning(
-            "Referente %s no estaba registrado. "
-            "Se crea registro básico.",
-            referrer_id
-        )
-
-        data["users"][referrer_id] = {
-            "telegram_id": int(
-                referrer_id
-            ),
-            "username": "",
-            "first_name": "",
-            "referred_by": None
-        }
-
-    # ========================================================
-    # UNA CUENTA SOLO PUEDE TENER UN REFERENTE
-    # ========================================================
-
-    if data["users"][user_id].get(
-        "referred_by"
-    ):
-
-        logger.info(
-            "Usuario %s ya tiene referente %s. "
-            "No se cambia.",
-            user_id,
-            data["users"][user_id][
-                "referred_by"
-            ]
-        )
-
-        save_referrals(data)
-
-        return False
-
-    # ========================================================
-    # EVITAR DUPLICADOS
-    # ========================================================
-
-    data["referrals"].setdefault(
-        referrer_id,
-        []
-    )
-
-    if user_id in data["referrals"][
-        referrer_id
-    ]:
-
-        logger.info(
-            "Usuario %s ya está registrado "
-            "como referido de %s.",
-            user_id,
-            referrer_id
-        )
-
-        data["users"][user_id][
-            "referred_by"
-        ] = referrer_id
-
-        save_referrals(data)
-
-        return False
-
-    # ========================================================
-    # REGISTRAR NUEVO REFERIDO
-    # ========================================================
-
-    data["referrals"][
-        referrer_id
-    ].append(user_id)
-
-    data["users"][user_id][
-        "referred_by"
-    ] = referrer_id
-
-    save_referrals(data)
-
-    logger.info(
-        "Nuevo referido registrado: %s -> %s",
-        referrer_id,
-        user_id
-    )
-
-    return True
-
-
-def get_referral_levels(user_id):
-    """
-    Devuelve los referidos de:
-
-    Nivel 1 = referidos directos
-    Nivel 2 = referidos de Nivel 1
-    Nivel 3 = referidos de Nivel 2
-    """
-
-    data = load_referrals()
-
-    root_id = str(user_id)
-
-    # ========================================================
-    # NIVEL 1
-    # ========================================================
-
-    level_1 = list(
-        data["referrals"].get(
-            root_id,
-            []
-        )
-    )
-
-    # ========================================================
-    # NIVEL 2
-    # ========================================================
-
-    level_2 = []
-
-    for user_l1 in level_1:
-
-        level_2.extend(
-            data["referrals"].get(
-                str(user_l1),
-                []
-            )
-        )
-
-    # ========================================================
-    # NIVEL 3
-    # ========================================================
-
-    level_3 = []
-
-    for user_l2 in level_2:
-
-        level_3.extend(
-            data["referrals"].get(
-                str(user_l2),
-                []
-            )
-        )
-
-    return {
-        "level_1": level_1,
-        "level_2": level_2,
-        "level_3": level_3,
-    }
-
-
-def get_referral_count(user_id):
-    """
-    Devuelve el número de referidos directos
-    de un usuario.
-    """
-
-    return len(
-        get_referral_levels(
-            user_id
-        )["level_1"]
-    )
-
+    "",
+).strip()
+
+# ============================================================
+# 🔗 ONEROYAL — ENLACES DE APEX QUANT
+# ============================================================
+
+# Enlace de IB de Apex Quant
+ONEROYAL_IB_URL = os.getenv(
+    "ONEROYAL_IB_URL",
+    "",
+).strip()
+
+# Enlace específico para CopyTrading de Apex Quant
+ONEROYAL_COPYTRADING_URL = os.getenv(
+    "ONEROYAL_COPYTRADING_URL",
+    "",
+).strip()
+
+# ============================================================
+# 📅 CALENDARIO ECONÓMICO
+# ============================================================
 
 FINANCE_CALENDAR_BASE = (
     "https://www.financecalendar.com/wp-json/fc/v1"
@@ -545,23 +98,366 @@ logger = logging.getLogger(
     "apex_quant"
 )
 
+
 # ============================================================
 # VERIFICACIÓN DE ADMINISTRADOR
 # ============================================================
 
 def is_admin(user_id):
-    admin_id = os.getenv("ADMIN_TELEGRAM_ID")
+
+    admin_id = os.getenv(
+        "ADMIN_TELEGRAM_ID"
+    )
 
     if not admin_id:
         return False
 
     return str(user_id) == str(admin_id)
-    
+
+
 # ============================================================
-# TECLADO PRINCIPAL
+# ALMACENAMIENTO DE REFERIDOS
 # ============================================================
 
-def main_menu(user_id=None):
+def load_referrals():
+    """Carga los datos de referidos desde JSON."""
+
+    try:
+
+        if not os.path.exists(
+            REFERRALS_FILE
+        ):
+            return {
+                "users": {},
+                "referrals": {},
+            }
+
+        with open(
+            REFERRALS_FILE,
+            "r",
+            encoding="utf-8",
+        ) as file:
+
+            data = json.load(file)
+
+        if not isinstance(
+            data,
+            dict,
+        ):
+            raise ValueError(
+                "Formato de referidos inválido"
+            )
+
+        data.setdefault(
+            "users",
+            {},
+        )
+
+        data.setdefault(
+            "referrals",
+            {},
+        )
+
+        return data
+
+    except Exception as error:
+
+        logger.error(
+            "Error cargando referidos: %s",
+            error,
+        )
+
+        return {
+            "users": {},
+            "referrals": {},
+        }
+
+
+def save_referrals(data):
+    """Guarda los datos de referidos."""
+
+    try:
+
+        temp_file = (
+            f"{REFERRALS_FILE}.tmp"
+        )
+
+        with open(
+            temp_file,
+            "w",
+            encoding="utf-8",
+        ) as file:
+
+            json.dump(
+                data,
+                file,
+                ensure_ascii=False,
+                indent=2,
+            )
+
+        os.replace(
+            temp_file,
+            REFERRALS_FILE,
+        )
+
+    except Exception as error:
+
+        logger.error(
+            "Error guardando referidos: %s",
+            error,
+        )
+
+
+def register_user(user):
+    """Registra un usuario mediante su Telegram ID."""
+
+    if not user:
+        return
+
+    data = load_referrals()
+
+    user_id = str(
+        user.id
+    )
+
+    if user_id not in data["users"]:
+
+        data["users"][user_id] = {
+            "telegram_id": user.id,
+            "username": user.username or "",
+            "first_name": user.first_name or "",
+            "referred_by": None,
+        }
+
+    else:
+
+        data["users"][user_id][
+            "username"
+        ] = user.username or ""
+
+        data["users"][user_id][
+            "first_name"
+        ] = user.first_name or ""
+
+    data["referrals"].setdefault(
+        user_id,
+        [],
+    )
+
+    save_referrals(
+        data
+    )
+
+    return data
+
+
+def process_referral(
+    user,
+    start_parameter,
+):
+    """
+    Procesa enlaces:
+
+    /start ref_123456789
+    """
+
+    if not user or not start_parameter:
+        return False
+
+    parameter = str(
+        start_parameter
+    ).strip()
+
+    if not parameter.startswith(
+        "ref_"
+    ):
+        return False
+
+    referrer_id = (
+        parameter[4:]
+        .strip()
+    )
+
+    if not referrer_id.isdigit():
+
+        logger.warning(
+            "Código de referido inválido: %s",
+            parameter,
+        )
+
+        return False
+
+    user_id = str(
+        user.id
+    )
+
+    if referrer_id == user_id:
+
+        logger.info(
+            "Auto-referencia bloqueada para Telegram ID %s",
+            user_id,
+        )
+
+        return False
+
+    data = load_referrals()
+
+    if user_id not in data["users"]:
+
+        data["users"][user_id] = {
+            "telegram_id": user.id,
+            "username": user.username or "",
+            "first_name": user.first_name or "",
+            "referred_by": None,
+        }
+
+    else:
+
+        data["users"][user_id][
+            "username"
+        ] = user.username or ""
+
+        data["users"][user_id][
+            "first_name"
+        ] = user.first_name or ""
+
+    data["referrals"].setdefault(
+        user_id,
+        [],
+    )
+
+    if referrer_id not in data["users"]:
+
+        data["users"][referrer_id] = {
+            "telegram_id": int(
+                referrer_id
+            ),
+            "username": "",
+            "first_name": "",
+            "referred_by": None,
+        }
+
+    if data["users"][user_id].get(
+        "referred_by"
+    ):
+
+        save_referrals(
+            data
+        )
+
+        return False
+
+    data["referrals"].setdefault(
+        referrer_id,
+        [],
+    )
+
+    if user_id in data["referrals"][
+        referrer_id
+    ]:
+
+        data["users"][user_id][
+            "referred_by"
+        ] = referrer_id
+
+        save_referrals(
+            data
+        )
+
+        return False
+
+    data["referrals"][
+        referrer_id
+    ].append(
+        user_id
+    )
+
+    data["users"][user_id][
+        "referred_by"
+    ] = referrer_id
+
+    save_referrals(
+        data
+    )
+
+    logger.info(
+        "Nuevo referido registrado: %s -> %s",
+        referrer_id,
+        user_id,
+    )
+
+    return True
+
+
+def get_referral_levels(
+    user_id
+):
+    """
+    Nivel 1 = referidos directos
+    Nivel 2 = referidos de Nivel 1
+    Nivel 3 = referidos de Nivel 2
+    """
+
+    data = load_referrals()
+
+    root_id = str(
+        user_id
+    )
+
+    level_1 = list(
+        data["referrals"].get(
+            root_id,
+            [],
+        )
+    )
+
+    level_2 = []
+
+    for user_l1 in level_1:
+
+        level_2.extend(
+            data["referrals"].get(
+                str(user_l1),
+                [],
+            )
+        )
+
+    level_3 = []
+
+    for user_l2 in level_2:
+
+        level_3.extend(
+            data["referrals"].get(
+                str(user_l2),
+                [],
+            )
+        )
+
+    return {
+        "level_1": level_1,
+        "level_2": level_2,
+        "level_3": level_3,
+    }
+
+
+def get_referral_count(
+    user_id
+):
+
+    return len(
+        get_referral_levels(
+            user_id
+        )["level_1"]
+    )
+
+
+# ============================================================
+# 🏠 MENÚ PRINCIPAL
+# ============================================================
+
+def main_menu(
+    user_id=None
+):
 
     keyboard = [
 
@@ -570,19 +466,17 @@ def main_menu(user_id=None):
                 "📊 Mercados",
                 callback_data="markets",
             ),
-
             InlineKeyboardButton(
                 "📡 Señales",
                 callback_data="signals",
             ),
         ],
 
-       [
+        [
             InlineKeyboardButton(
                 "📋 CopyTrading",
                 callback_data="copytrading",
             ),
-
             InlineKeyboardButton(
                 "👥 Referidos",
                 callback_data="referrals",
@@ -591,17 +485,9 @@ def main_menu(user_id=None):
 
         [
             InlineKeyboardButton(
-                "💎 Fondeo",
-                callback_data="funding_menu",
-            ),
-        ],
-
-        [
-            InlineKeyboardButton(
                 "🌐 Idioma",
                 callback_data="language",
             ),
-
             InlineKeyboardButton(
                 "⚙️ Configuración",
                 callback_data="settings",
@@ -627,479 +513,6 @@ def main_menu(user_id=None):
         keyboard
     )
 
-# ============================================================
-# 💎 MENÚ DE FONDEO — QVAFUNDED
-# ============================================================
-
-def funding_menu():
-
-    return InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "🏦 ¿Qué es QvaFunded?",
-                    callback_data="funding_about",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "💼 Tipos de cuentas",
-                    callback_data="funding_accounts",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "⭐ QVA Flex",
-                    callback_data="funding_flex",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "⚠️ Importante",
-                    callback_data="funding_warning",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🚀 Ir a QvaFunded",
-                    callback_data="funding_link",
-                )
-            ],
-[
-    InlineKeyboardButton(
-        "🔙 Volver",
-        callback_data="main_menu",
-    )
-],
-        ]
-    )
-
-
-async def show_funding_menu(query):
-
-    text = (
-        "💎 <b>CUENTAS DE FONDEO</b>\n\n"
-        "Accede a información sobre QvaFunded, "
-        "sus programas de fondeo y las condiciones "
-        "de sus cuentas.\n\n"
-        "🏦 Conoce QvaFunded\n"
-        "💼 Compara sus cuentas\n"
-        "⭐ Conoce QVA Flex\n"
-        "⚠️ Revisa las condiciones importantes\n\n"
-        "👇 Selecciona una opción:"
-    )
-
-    await query.edit_message_text(
-        text=text,
-        reply_markup=funding_menu(),
-        parse_mode="HTML",
-    )
-
-
-async def show_funding_about(query):
-
-    text = (
-        "🏦 <b>¿QUÉ ES QVAFUNDED?</b>\n\n"
-        "QvaFunded es una empresa de fondeo que ofrece "
-        "programas de evaluación para traders.\n\n"
-        "Su modelo permite al trader demostrar su capacidad "
-        "de gestión y operativa siguiendo las reglas "
-        "establecidas por cada programa.\n\n"
-        "📊 Ofrece diferentes tipos de cuentas y tamaños "
-        "de capital.\n\n"
-        "💻 Consulta siempre las condiciones actuales "
-        "antes de adquirir una evaluación.\n\n"
-        "⚠️ Las reglas, precios y condiciones pueden cambiar."
-    )
-
-    await query.edit_message_text(
-        text=text,
-        reply_markup=InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        "💼 Tipos de cuentas",
-                        callback_data="funding_accounts",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "⭐ Ver QVA Flex",
-                        callback_data="funding_flex",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🔙 Volver",
-                        callback_data="funding_menu",
-                    )
-                ],
-            ]
-        ),
-        parse_mode="HTML",
-    )
-
-
-async def show_funding_accounts(query):
-
-    text = (
-        "💼 <b>TIPOS DE CUENTAS QVAFUNDED</b>\n\n"
-        "QvaFunded ofrece diferentes programas de "
-        "evaluación con distintas condiciones.\n\n"
-        "⭐ <b>QVA Flex</b>\n"
-        "Programa de 1 fase con objetivo del 6% y "
-        "trailing drawdown.\n\n"
-        "💼 <b>Profesional</b>\n"
-        "Programa con condiciones y reglas propias.\n\n"
-        "📊 <b>Ligera</b>\n"
-        "Programa diseñado con condiciones diferentes "
-        "de riesgo y evaluación.\n\n"
-        "⚠️ Cada programa tiene sus propias reglas. "
-        "Consulta siempre las condiciones vigentes "
-        "directamente en QvaFunded."
-    )
-
-    await query.edit_message_text(
-        text=text,
-        reply_markup=InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        "⭐ Ver QVA Flex",
-                        callback_data="funding_flex",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🚀 Ir a QvaFunded",
-                        callback_data="funding_link",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🔙 Volver",
-                        callback_data="funding_menu",
-                    )
-                ],
-            ]
-        ),
-        parse_mode="HTML",
-    )
-
-
-async def show_funding_flex(query):
-
-    text = (
-        "⭐ <b>QVA FLEX — CUENTA $3K</b>\n\n"
-        "🎯 <b>Objetivo:</b> $180 (6%)\n"
-        "📊 <b>Evaluación:</b> 1 fase\n"
-        "📉 <b>Drawdown:</b> Trailing EOD\n"
-        "🛑 <b>Trailing inicial:</b> $120\n"
-        "💰 <b>Pérdida diaria:</b> Ninguna\n"
-        "📅 <b>Días mínimos:</b> Ninguno\n"
-        "⚖️ <b>Consistencia:</b> 50%\n"
-        "📰 <b>Trading en noticias:</b> Sí\n"
-        "⚡ <b>Apalancamiento:</b> 1:100\n"
-        "💵 <b>Reparto:</b> 80/20\n"
-        "🤖 <b>EAs:</b> No permitidos\n"
-        "⚡ <b>Scalping:</b> Sí\n\n"
-        "📌 <b>Consistencia</b>\n"
-        "El mejor día no puede superar el 50% del "
-        "objetivo de beneficio.\n\n"
-        "📌 <b>Trailing EOD</b>\n"
-        "El drawdown se calcula según las condiciones "
-        "establecidas por QvaFunded.\n\n"
-        "⚠️ Las reglas, precios y promociones pueden "
-        "cambiar. Consulta siempre las condiciones "
-        "actuales directamente en QvaFunded."
-    )
-
-    await query.edit_message_text(
-        text=text,
-        reply_markup=InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        "🚀 Ir a QvaFunded",
-                        callback_data="funding_link",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "⚠️ Importante",
-                        callback_data="funding_warning",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🔙 Volver",
-                        callback_data="funding_menu",
-                    )
-                ],
-            ]
-        ),
-        parse_mode="HTML",
-    )
-
-
-async def show_funding_warning(query):
-
-    text = (
-        "⚠️ <b>IMPORTANTE — CUENTAS DE FONDEO</b>\n\n"
-        "Las señales de <b>Apex Quant</b> NO deben "
-        "utilizarse para intentar superar un challenge "
-        "de QvaFunded.\n\n"
-        "🚫 No utilices las señales de Apex Quant como "
-        "método automático o directo para intentar "
-        "aprobar una evaluación de fondeo.\n\n"
-        "📋 El trader es responsable de realizar su propia "
-        "operativa y de cumplir en todo momento las reglas "
-        "establecidas por QvaFunded.\n\n"
-        "⚠️ Apex Quant no garantiza la aprobación de ningún "
-        "challenge ni los resultados de una cuenta de fondeo.\n\n"
-        "📌 Antes de operar una cuenta de fondeo, revisa "
-        "siempre las reglas y condiciones vigentes de "
-        "QvaFunded."
-    )
-
-    await query.edit_message_text(
-        text=text,
-        reply_markup=InlineKeyboardMarkup(
-            [
-                [
-                    InlineKeyboardButton(
-                        "🚀 Ir a QvaFunded",
-                        callback_data="funding_link",
-                    )
-                ],
-                [
-                    InlineKeyboardButton(
-                        "🔙 Volver",
-                        callback_data="funding_menu",
-                    )
-                ],
-            ]
-        ),
-        parse_mode="HTML",
-    )
-
-
-async def show_funding_link(query):
-
-    referral_url = os.getenv(
-        "QVAFUNDED_REFERRAL_URL",
-        "https://www.qvafunded.live",
-    )
-
-    keyboard = InlineKeyboardMarkup(
-        [
-            [
-                InlineKeyboardButton(
-                    "🚀 Abrir QvaFunded",
-                    url=referral_url,
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    "🔙 Volver",
-                    callback_data="funding_menu",
-                )
-            ],
-        ]
-    )
-
-    text = (
-        "🚀 <b>QVA FUNDED</b>\n\n"
-        "Accede directamente a QvaFunded para consultar "
-        "las cuentas, precios y condiciones actuales.\n\n"
-        "💎 Revisa siempre las reglas vigentes antes de "
-        "adquirir cualquier evaluación.\n\n"
-        "👇 Pulsa el botón para acceder:"
-    )
-
-    await query.edit_message_text(
-        text=text,
-        reply_markup=keyboard,
-        parse_mode="HTML",
-    )
-
-# ============================================================
-# MENÚ MERCADOS
-# ============================================================
-
-def markets_menu():
-
-    keyboard = [
-
-        [
-            InlineKeyboardButton(
-                "📅 Calendario económico",
-                callback_data="calendar",
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🚨 Noticias alto impacto",
-                callback_data="high_news",
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💱 Noticias por divisa",
-                callback_data="currency_news",
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⚠️ Riesgo de noticias",
-                callback_data="news_risk",
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "📈 Análisis diario",
-                callback_data="daily_analysis",
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⬅️ Menú principal",
-                callback_data="main_menu",
-            )
-        ],
-    ]
-
-    return InlineKeyboardMarkup(
-        keyboard
-    )
-
-
-# ============================================================
-# MENÚ CALENDARIO
-# ============================================================
-
-def calendar_menu():
-
-    keyboard = [
-
-        [
-            InlineKeyboardButton(
-                "📅 Hoy",
-                callback_data="calendar_today",
-            ),
-
-            InlineKeyboardButton(
-                "📅 Mañana",
-                callback_data="calendar_tomorrow",
-            ),
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🗓️ Esta semana",
-                callback_data="calendar_week",
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🚨 Alto impacto",
-                callback_data="calendar_high",
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "💱 Por divisa",
-                callback_data="calendar_currency",
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "🔄 Actualizar",
-                callback_data="calendar_refresh",
-            )
-        ],
-
-        [
-            InlineKeyboardButton(
-                "⬅️ Mercados",
-                callback_data="markets",
-            )
-        ],
-    ]
-
-    return InlineKeyboardMarkup(
-        keyboard
-    )
-
-
-# ============================================================
-# MENÚ DIVISAS
-# ============================================================
-
-def currency_menu():
-
-    currencies = [
-
-        ("🇺🇸 USD", "USD"),
-        ("🇪🇺 EUR", "EUR"),
-        ("🇬🇧 GBP", "GBP"),
-        ("🇯🇵 JPY", "JPY"),
-        ("🇨🇭 CHF", "CHF"),
-        ("🇨🇦 CAD", "CAD"),
-        ("🇦🇺 AUD", "AUD"),
-        ("🇳🇿 NZD", "NZD"),
-    ]
-
-    keyboard = []
-
-    for i in range(
-        0,
-        len(currencies),
-        2
-    ):
-
-        row = []
-
-        for name, code in currencies[
-            i:i + 2
-        ]:
-
-            row.append(
-                InlineKeyboardButton(
-                    name,
-                    callback_data=(
-                        f"currency_{code}"
-                    ),
-                )
-            )
-
-        keyboard.append(row)
-
-    keyboard.append(
-        [
-            InlineKeyboardButton(
-                "⬅️ Calendario",
-                callback_data="calendar",
-            )
-        ]
-    )
-
-    return InlineKeyboardMarkup(
-        keyboard
-    )
-
-
-# ============================================================
-# BOTÓN MENÚ PRINCIPAL
-# ============================================================
 
 def back_main_menu():
 
@@ -1114,50 +527,440 @@ def back_main_menu():
         ]
     )
 
+# ============================================================
+# 📋 COPYTRADING — ONEROYAL / APEX QUANT
+# ============================================================
+
+def copytrading_menu():
+
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "📈 Seguir Apex Quant",
+                callback_data="copy_follow",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🏦 Abrir cuenta OneRoyal",
+                callback_data="copy_register",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "ℹ️ ¿Cómo funciona?",
+                callback_data="copy_info",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔙 Volver",
+                callback_data="main_menu",
+            )
+        ],
+    ]
+
+    return InlineKeyboardMarkup(
+        keyboard
+    )
+
+
+async def show_copy_info(
+    query
+):
+
+    text = (
+        "📋 <b>COPYTRADING APEX QUANT</b>\n\n"
+        "Apex Quant ofrece acceso a un servicio de "
+        "CopyTrading mediante OneRoyal.\n\n"
+        "📊 Puedes conectar una cuenta compatible y "
+        "seguir las operaciones de Apex Quant.\n\n"
+        "🏦 <b>Broker:</b> OneRoyal\n"
+        "📋 <b>Servicio:</b> CopyTrading\n\n"
+        "El objetivo es facilitar el acceso de los "
+        "usuarios al servicio desde un único lugar.\n\n"
+        "⚠️ El CopyTrading implica riesgo. Las operaciones "
+        "pueden generar ganancias o pérdidas y los "
+        "resultados anteriores no garantizan resultados "
+        "futuros.\n\n"
+        "👇 Selecciona una opción:"
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=copytrading_menu(),
+        parse_mode="HTML",
+    )
+
+
+async def show_copy_follow(
+    query
+):
+
+    copy_url = os.getenv(
+        "ONEROYAL_COPYTRADING_URL",
+        "",
+    ).strip()
+
+    ib_url = os.getenv(
+        "ONEROYAL_IB_URL",
+        "",
+    ).strip()
+
+    keyboard = []
+
+    if copy_url:
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "📈 Acceder al CopyTrading",
+                    url=copy_url,
+                )
+            ]
+        )
+
+    if ib_url:
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "🏦 Abrir cuenta OneRoyal",
+                    url=ib_url,
+                )
+            ]
+        )
+
+    keyboard.extend(
+        [
+            [
+                InlineKeyboardButton(
+                    "📋 Pasos para comenzar",
+                    callback_data="copy_steps",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 Volver",
+                    callback_data="copytrading",
+                )
+            ],
+        ]
+    )
+
+    text = (
+        "📈 <b>SEGUIR APEX QUANT</b>\n\n"
+        "Para utilizar el CopyTrading de Apex Quant "
+        "necesitas una cuenta compatible con el servicio.\n\n"
+        "🏦 <b>Broker:</b> OneRoyal\n"
+        "📊 <b>Servicio:</b> CopyTrading\n\n"
+        "1️⃣ Abre tu cuenta con OneRoyal.\n"
+        "2️⃣ Completa el proceso de verificación requerido.\n"
+        "3️⃣ Abre una cuenta de trading compatible.\n"
+        "4️⃣ Accede al servicio de CopyTrading.\n"
+        "5️⃣ Sigue las instrucciones para conectar tu "
+        "cuenta con Apex Quant.\n\n"
+        "⚠️ Antes de operar, revisa las condiciones, "
+        "comisiones y riesgos aplicables al servicio.\n\n"
+        "👇 Selecciona una opción:"
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
+        parse_mode="HTML",
+    )
+
+
+async def show_copy_register(
+    query
+):
+
+    ib_url = os.getenv(
+        "ONEROYAL_IB_URL",
+        "",
+    ).strip()
+
+    keyboard = []
+
+    if ib_url:
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "🚀 Registrarme en OneRoyal",
+                    url=ib_url,
+                )
+            ]
+        )
+
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                "📋 Pasos para comenzar",
+                callback_data="copy_steps",
+            )
+        ]
+    )
+
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                "🔙 Volver",
+                callback_data="copytrading",
+            )
+        ]
+    )
+
+    text = (
+        "🏦 <b>ABRIR CUENTA EN ONEROYAL</b>\n\n"
+        "Si todavía no tienes una cuenta, puedes "
+        "registrarte mediante el enlace de Apex Quant.\n\n"
+        "1️⃣ Pulsa <b>Registrarme en OneRoyal</b>.\n"
+        "2️⃣ Completa tus datos de registro.\n"
+        "3️⃣ Completa el proceso de verificación "
+        "requerido.\n"
+        "4️⃣ Abre una cuenta de trading compatible "
+        "con el servicio.\n"
+        "5️⃣ Después podrás continuar con la configuración "
+        "del CopyTrading.\n\n"
+        "⚠️ Los requisitos, condiciones y disponibilidad "
+        "de productos pueden cambiar. Consulta siempre "
+        "la información vigente de OneRoyal."
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
+        parse_mode="HTML",
+    )
+
+
+async def show_copy_steps(
+    query
+):
+
+    copy_url = os.getenv(
+        "ONEROYAL_COPYTRADING_URL",
+        "",
+    ).strip()
+
+    keyboard = []
+
+    if copy_url:
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "📈 Acceder al CopyTrading",
+                    url=copy_url,
+                )
+            ]
+        )
+
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                "🔙 Volver",
+                callback_data="copy_follow",
+            )
+        ]
+    )
+
+    text = (
+        "📋 <b>PASOS PARA COMENZAR</b>\n\n"
+        "1️⃣ <b>Regístrate</b>\n"
+        "Crea tu cuenta de OneRoyal mediante el enlace "
+        "proporcionado por Apex Quant.\n\n"
+        "2️⃣ <b>Verificación</b>\n"
+        "Completa el proceso KYC que corresponda a tu cuenta.\n\n"
+        "3️⃣ <b>Cuenta de trading</b>\n"
+        "Abre la cuenta compatible con el servicio que "
+        "quieras utilizar.\n\n"
+        "4️⃣ <b>CopyTrading</b>\n"
+        "Accede al enlace específico del CopyTrading de "
+        "Apex Quant.\n\n"
+        "5️⃣ <b>Configuración</b>\n"
+        "Sigue las instrucciones disponibles para conectar "
+        "tu cuenta y comenzar a utilizar el servicio.\n\n"
+        "⚠️ <b>Importante:</b>\n"
+        "El CopyTrading implica riesgo. Las operaciones "
+        "pueden generar pérdidas y los resultados anteriores "
+        "no garantizan resultados futuros."
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
+        parse_mode="HTML",
+    )
+
 
 # ============================================================
-# SUSCRIPCIONES DE SEÑALES — ALMACENAMIENTO
+# 📊 MERCADOS
+# ============================================================
+
+async def markets_menu(
+    query
+):
+
+    text = (
+        "📊 <b>MERCADOS</b>\n\n"
+        "Consulta los principales instrumentos que "
+        "seguimos en Apex Quant.\n\n"
+        "💱 EUR/USD\n"
+        "💱 GBP/USD\n"
+        "💱 GBP/JPY\n\n"
+        "📌 Nuestro enfoque principal está orientado "
+        "al DayTrading.\n\n"
+        "⚠️ La información presentada no constituye "
+        "asesoramiento financiero."
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "📅 Calendario económico",
+                    callback_data="calendar",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 Volver",
+                    callback_data="main_menu",
+                )
+            ],
+        ]
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
+
+
+async def show_markets(
+    query
+):
+
+    await markets_menu(
+        query
+    )
+
+
+# ============================================================
+# 📡 SEÑALES
+# ============================================================
+
+async def signals_menu(
+    query
+):
+
+    text = (
+        "📡 <b>SEÑALES APEX QUANT</b>\n\n"
+        "Accede al servicio de señales de trading "
+        "de Apex Quant.\n\n"
+        "📊 Las señales son preparadas y enviadas "
+        "por el administrador.\n\n"
+        "💰 <b>Suscripción:</b> 30 USDT / 30 días\n"
+        "🌐 <b>Red de pago:</b> BEP20\n\n"
+        "⚠️ Las señales no garantizan resultados. "
+        "Los mercados financieros implican riesgo "
+        "de pérdida de capital.\n\n"
+        "👇 Selecciona una opción:"
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "💳 Suscribirme",
+                    callback_data="signal_subscription",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📋 Estado de mi suscripción",
+                    callback_data="signal_status",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 Volver",
+                    callback_data="main_menu",
+                )
+            ],
+        ]
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
+
+
+async def show_signals(
+    query
+):
+
+    await signals_menu(
+        query
+    )
+
+
+# ============================================================
+# 💳 SUSCRIPCIONES DE SEÑALES
 # ============================================================
 
 def load_subscriptions():
-
-    """Carga las suscripciones desde JSON."""
 
     try:
 
         if not os.path.exists(
             SUBSCRIPTIONS_FILE
         ):
-
             return {}
 
         with open(
             SUBSCRIPTIONS_FILE,
             "r",
-            encoding="utf-8"
+            encoding="utf-8",
         ) as file:
 
-            data = json.load(file)
+            data = json.load(
+                file
+            )
 
-        return (
-            data
-            if isinstance(data, dict)
-            else {}
-        )
+        if not isinstance(
+            data,
+            dict,
+        ):
+            return {}
+
+        return data
 
     except Exception as error:
 
         logger.error(
             "Error cargando suscripciones: %s",
-            error
+            error,
         )
 
         return {}
 
 
-def save_subscriptions(data):
-
-    """Guarda las suscripciones de forma atómica."""
+def save_subscriptions(
+    data
+):
 
     try:
 
@@ -1168,815 +971,371 @@ def save_subscriptions(data):
         with open(
             temp_file,
             "w",
-            encoding="utf-8"
+            encoding="utf-8",
         ) as file:
 
             json.dump(
                 data,
                 file,
                 ensure_ascii=False,
-                indent=2
+                indent=2,
             )
 
         os.replace(
             temp_file,
-            SUBSCRIPTIONS_FILE
+            SUBSCRIPTIONS_FILE,
         )
 
     except Exception as error:
 
         logger.error(
             "Error guardando suscripciones: %s",
-            error
+            error,
         )
 
 
-def get_subscription(user_id):
-
-    """Devuelve la suscripción de un usuario."""
+def is_subscription_active(
+    user_id
+):
 
     data = load_subscriptions()
 
-    return data.get(
+    subscription = data.get(
         str(user_id)
     )
 
+    if not subscription:
+        return False
 
-def activate_subscription(user_id):
+    if not subscription.get(
+        "active",
+        False,
+    ):
+        return False
 
-    """Activa o renueva una suscripción por 30 días."""
-
-    now = datetime.now()
-
-    current = get_subscription(
-        user_id
+    expires_at = subscription.get(
+        "expires_at"
     )
 
-    if current:
+    if not expires_at:
+        return False
 
-        try:
+    try:
 
-            current_expiry = (
-                datetime.fromisoformat(
-                    current.get(
-                        "expires_at",
-                        ""
-                    )
-                )
-            )
+        expiration = datetime.fromisoformat(
+            expires_at
+        )
 
-        except (
-            TypeError,
-            ValueError
-        ):
+        if expiration <= datetime.utcnow():
+            return False
 
-            current_expiry = now
+        return True
 
-        start_date = (
-            current_expiry
-            if current_expiry > now
-            else now
+    except Exception:
+
+        return False
+
+
+async def show_signal_subscription(
+    query
+):
+
+    address = USDT_BEP20_ADDRESS
+
+    if address:
+
+        payment_text = (
+            "💳 <b>SUSCRIPCIÓN A SEÑALES</b>\n\n"
+            f"💰 Precio: <b>{SIGNALS_PRICE_USDT} USDT</b>\n"
+            f"📅 Duración: <b>{SIGNALS_DURATION_DAYS} días</b>\n"
+            "🌐 Red: <b>BEP20</b>\n\n"
+            "💵 <b>Dirección USDT BEP20:</b>\n"
+            f"<code>{address}</code>\n\n"
+            "📌 Envía exactamente el importe indicado "
+            "a la dirección anterior.\n\n"
+            "Después del pago, envía al administrador "
+            "el comprobante o hash de la transacción "
+            "para verificarlo y activar tu suscripción.\n\n"
+            "⚠️ Verifica cuidadosamente la red y la "
+            "dirección antes de realizar el envío."
         )
 
     else:
 
-        start_date = now
-
-    expires_at = (
-        start_date
-        + timedelta(
-            days=SIGNALS_DURATION_DAYS
-        )
-    )
-
-    data = load_subscriptions()
-
-    data[str(user_id)] = {
-
-        "telegram_id": int(
-            user_id
-        ),
-
-        "status": "active",
-
-        "started_at": (
-            start_date.isoformat()
-        ),
-
-        "expires_at": (
-            expires_at.isoformat()
-        ),
-
-        "price_usdt": (
-            SIGNALS_PRICE_USDT
-        ),
-
-        "payment_network": "BEP20",
-    }
-
-    save_subscriptions(
-        data
-    )
-
-    return data[
-        str(user_id)
-    ]
-
-
-# ============================================================
-# CALENDARIO — PETICIÓN API
-# ============================================================
-
-async def fetch_calendar_events(
-    start_date=None,
-    end_date=None,
-    impact=None,
-    currency=None,
-):
-
-    params = {}
-
-    if start_date:
-        params["start_date"] = (
-            start_date.strftime("%Y-%m-%d")
-            if hasattr(start_date, "strftime")
-            else str(start_date)
+        payment_text = (
+            "💳 <b>SUSCRIPCIÓN A SEÑALES</b>\n\n"
+            f"💰 Precio: <b>{SIGNALS_PRICE_USDT} USDT</b>\n"
+            f"📅 Duración: <b>{SIGNALS_DURATION_DAYS} días</b>\n"
+            "🌐 Red: <b>BEP20</b>\n\n"
+            "⚠️ La dirección de pago todavía no está "
+            "configurada.\n\n"
+            "Contacta con el administrador para recibir "
+            "las instrucciones de pago."
         )
 
-    if end_date:
-        params["end_date"] = (
-            end_date.strftime("%Y-%m-%d")
-            if hasattr(end_date, "strftime")
-            else str(end_date)
-        )
-
-    if impact:
-        params["impact"] = impact
-
-    if currency:
-        params["currency"] = currency
-
-    try:
-
-        url = (
-            f"{FINANCE_CALENDAR_BASE}/events"
-        )
-
-        query_string = urlencode(
-            params
-        )
-
-        if query_string:
-            url = (
-                f"{url}?{query_string}"
-            )
-
-        request = Request(
-            url,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 "
-                    "ApexQuantBot/1.0"
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "📋 Ver mi estado",
+                    callback_data="signal_status",
                 )
-            },
-        )
-
-        with urlopen(
-            request,
-            timeout=15
-        ) as response:
-
-            raw = response.read()
-
-        data = json.loads(
-            raw.decode(
-                "utf-8"
-            )
-        )
-
-        if isinstance(data, dict):
-
-            if isinstance(
-                data.get("events"),
-                list
-            ):
-                return data["events"]
-
-            if isinstance(
-                data.get("data"),
-                list
-            ):
-                return data["data"]
-
-        if isinstance(data, list):
-            return data
-
-    except Exception as error:
-
-        logger.error(
-            "Error consultando calendario: %s",
-            error
-        )
-
-    return []
-
-
-def normalize_event(event):
-
-    if not isinstance(
-        event,
-        dict
-    ):
-        return None
-
-    date_value = (
-        event.get("date")
-        or event.get("datetime")
-        or event.get("date_time")
-        or event.get("time")
-        or ""
-    )
-
-    currency = (
-        event.get("currency")
-        or event.get("country")
-        or event.get("ccy")
-        or ""
-    )
-
-    impact = (
-        event.get("impact")
-        or event.get("importance")
-        or ""
-    )
-
-    title = (
-        event.get("title")
-        or event.get("event")
-        or event.get("name")
-        or "Evento económico"
-    )
-
-    actual = (
-        event.get("actual")
-        or event.get("act")
-        or ""
-    )
-
-    forecast = (
-        event.get("forecast")
-        or event.get("consensus")
-        or event.get("cons")
-        or ""
-    )
-
-    previous = (
-        event.get("previous")
-        or event.get("prev")
-        or ""
-    )
-
-    return {
-        "date": str(date_value),
-        "currency": str(currency),
-        "impact": str(impact),
-        "title": str(title),
-        "actual": str(actual),
-        "forecast": str(forecast),
-        "previous": str(previous),
-    }
-
-
-def event_impact_label(impact):
-
-    value = str(
-        impact
-    ).strip().lower()
-
-    if value in (
-        "high",
-        "alto",
-        "3",
-        "3.0",
-    ):
-
-        return "🔴 ALTO"
-
-    if value in (
-        "medium",
-        "moderate",
-        "medio",
-        "2",
-        "2.0",
-    ):
-
-        return "🟠 MEDIO"
-
-    if value in (
-        "low",
-        "bajo",
-        "1",
-        "1.0",
-    ):
-
-        return "🟢 BAJO"
-
-    return (
-        f"⚪ {impact}"
-        if impact
-        else "⚪ N/D"
-    )
-
-
-def format_calendar_event(
-    event
-):
-
-    item = normalize_event(
-        event
-    )
-
-    if not item:
-        return ""
-
-    lines = []
-
-    date_text = item["date"]
-
-    if date_text:
-        lines.append(
-            f"🕒 {date_text}"
-        )
-
-    lines.append(
-        f"{event_impact_label(item['impact'])} "
-        f"• {item['currency']}"
-    )
-
-    lines.append(
-        f"📌 {item['title']}"
-    )
-
-    values = []
-
-    if item["actual"]:
-        values.append(
-            f"Act: {item['actual']}"
-        )
-
-    if item["forecast"]:
-        values.append(
-            f"Cons: {item['forecast']}"
-        )
-
-    if item["previous"]:
-        values.append(
-            f"Anterior: {item['previous']}"
-        )
-
-    if values:
-        lines.append(
-            " | ".join(values)
-        )
-
-    return "\n".join(
-        lines
-    )
-
-
-def calendar_events_text(
-    events,
-    title="📅 Calendario económico",
-):
-
-    if not events:
-        return (
-            f"*{title}*\n\n"
-            "No se encontraron eventos "
-            "para el periodo seleccionado.\n\n"
-            "🔗 Datos: FinanceCalendar.com"
-        )
-
-    normalized = []
-
-    for event in events:
-
-        item = normalize_event(
-            event
-        )
-
-        if item:
-            normalized.append(
-                item
-            )
-
-    normalized.sort(
-        key=lambda x: (
-            x.get("date", "")
-            or ""
-        )
-    )
-
-    blocks = []
-
-    for item in normalized[:30]:
-
-        block = format_calendar_event(
-            item
-        )
-
-        if block:
-            blocks.append(
-                block
-            )
-
-    if not blocks:
-        return (
-            f"*{title}*\n\n"
-            "No se encontraron eventos "
-            "válidos para mostrar.\n\n"
-            "🔗 Datos: FinanceCalendar.com"
-        )
-
-    return (
-        f"*{title}*\n\n"
-        + "\n\n".join(
-            blocks
-        )
-        + "\n\n🔗 Datos: FinanceCalendar.com"
-    )
-
-
-def get_day_range(offset=0):
-
-    today = datetime.now().date()
-
-    target = (
-        today
-        + timedelta(
-            days=offset
-        )
-    )
-
-    return target, target
-
-
-def get_week_range():
-
-    today = datetime.now().date()
-
-    start = (
-        today
-        - timedelta(
-            days=today.weekday()
-        )
-    )
-
-    end = (
-        start
-        + timedelta(
-            days=6
-        )
-    )
-
-    return start, end
-
-
-async def show_calendar_today(
-    query
-):
-
-    start, end = get_day_range(
-        0
-    )
-
-    events = await asyncio.to_thread(
-        fetch_calendar_events,
-        start,
-        end,
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 Volver",
+                    callback_data="signals",
+                )
+            ],
+        ]
     )
 
     await query.edit_message_text(
-        calendar_events_text(
-            events,
-            "📅 Eventos de hoy",
-        ),
-        parse_mode="Markdown",
-        reply_markup=calendar_menu(),
+        text=payment_text,
+        reply_markup=keyboard,
+        parse_mode="HTML",
     )
 
 
-async def show_calendar_tomorrow(
+async def show_signal_payment(
     query
 ):
 
-    start, end = get_day_range(
-        1
-    )
-
-    events = await asyncio.to_thread(
-        fetch_calendar_events,
-        start,
-        end,
-    )
-
-    await query.edit_message_text(
-        calendar_events_text(
-            events,
-            "📅 Eventos de mañana",
-        ),
-        parse_mode="Markdown",
-        reply_markup=calendar_menu(),
-    )
-
-
-async def show_calendar_week(
-    query
-):
-
-    start, end = get_week_range()
-
-    events = await asyncio.to_thread(
-        fetch_calendar_events,
-        start,
-        end,
-    )
-
-    await query.edit_message_text(
-        calendar_events_text(
-            events,
-            "🗓️ Eventos de esta semana",
-        ),
-        parse_mode="Markdown",
-        reply_markup=calendar_menu(),
-    )
-
-
-async def show_calendar_high(
-    query
-):
-
-    start, end = get_week_range()
-
-    events = await asyncio.to_thread(
-        fetch_calendar_events,
-        start,
-        end,
-        impact="high",
-    )
-
-    await query.edit_message_text(
-        calendar_events_text(
-            events,
-            "🚨 Eventos de alto impacto",
-        ),
-        parse_mode="Markdown",
-        reply_markup=calendar_menu(),
-    )
-
-
-async def show_calendar_currency(
-    query
-):
-
-    text = (
-        "💱 *Noticias por divisa*\n\n"
-        "Selecciona la divisa:"
-    )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=currency_menu(),
-    )
-
-
-async def show_calendar_currency_events(
-    query,
-    currency,
-):
-
-    start, end = get_week_range()
-
-    events = await asyncio.to_thread(
-        fetch_calendar_events,
-        start,
-        end,
-        currency=currency,
-    )
-
-    await query.edit_message_text(
-        calendar_events_text(
-            events,
-            f"💱 Eventos {currency}",
-        ),
-        parse_mode="Markdown",
-        reply_markup=currency_menu(),
-    )
-
-
-async def show_calendar_refresh(
-    query
-):
-
-    start, end = get_day_range(
-        0
-    )
-
-    events = await asyncio.to_thread(
-        fetch_calendar_events,
-        start,
-        end,
-    )
-
-    await query.edit_message_text(
-        calendar_events_text(
-            events,
-            "🔄 Calendario actualizado",
-        ),
-        parse_mode="Markdown",
-        reply_markup=calendar_menu(),
-    )
-
-
-# ============================================================
-# NOTICIAS / RIESGO
-# ============================================================
-
-async def show_high_news(
-    query
-):
-
-    start, end = get_week_range()
-
-    events = await asyncio.to_thread(
-        fetch_calendar_events,
-        start,
-        end,
-        impact="high",
-    )
-
-    text = calendar_events_text(
-        events,
-        "🚨 Noticias de alto impacto",
-    )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=markets_menu(),
-    )
-
-
-async def show_currency_news(
-    query
-):
-
-    await show_calendar_currency(
+    await show_signal_subscription(
         query
     )
 
 
-async def show_news_risk(
+async def show_signal_status(
     query
 ):
 
-    text = (
-        "⚠️ *Riesgo de noticias*\n\n"
-        "Los eventos económicos de alto impacto "
-        "pueden aumentar la volatilidad y provocar "
-        "movimientos rápidos en los precios.\n\n"
-        "Antes de abrir una operación, revisa el "
-        "calendario económico y considera la posible "
-        "exposición a noticias.\n\n"
-        "⚠️ Esta información es educativa y no "
-        "garantiza resultados."
+    user_id = query.from_user.id
+
+    active = is_subscription_active(
+        user_id
     )
+
+    if active:
+
+        data = load_subscriptions()
+
+        subscription = data.get(
+            str(user_id),
+            {},
+        )
+
+        expires_at = subscription.get(
+            "expires_at",
+            "",
+        )
+
+        text = (
+            "🟢 <b>SUSCRIPCIÓN ACTIVA</b>\n\n"
+            "📡 Tienes acceso al servicio de "
+            "señales de Apex Quant.\n\n"
+            "📅 Válida hasta:\n"
+            f"<b>{expires_at}</b>\n\n"
+            "⚠️ Recuerda que las señales no garantizan "
+            "resultados y existe riesgo de pérdida."
+        )
+
+    else:
+
+        text = (
+            "🔴 <b>SUSCRIPCIÓN INACTIVA</b>\n\n"
+            "Actualmente no tienes una suscripción "
+            "activa a las señales de Apex Quant.\n\n"
+            "💰 Precio: <b>30 USDT / 30 días</b>\n"
+            "🌐 Red: <b>BEP20</b>"
+        )
 
     await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=markets_menu(),
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "💳 Suscribirme",
+                        callback_data="signal_subscription",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Volver",
+                        callback_data="signals",
+                    )
+                ],
+            ]
+        ),
+        parse_mode="HTML",
     )
-
 
 # ============================================================
-# ANÁLISIS DIARIO
+# 📋 COPYTRADING — ONEROYAL / APEX QUANT
 # ============================================================
 
-async def show_daily_analysis(
-    query
-):
-
-    text = (
-        "📈 *Análisis diario — Apex Quant*\n\n"
-
-        "🧭 *Estructura de análisis*\n"
-        "H4 – Dirección\n"
-        "H1 – Liquidez\n"
-        "M5 – Entrada\n\n"
-
-        "🔎 *Elementos analizados*\n"
-        "• BOS\n"
-        "• FVG\n"
-        "• Liquidez\n"
-        "• Volumen\n"
-        "• RSI 14\n"
-        "• HH / HL\n"
-        "• Estructura de mercado\n\n"
-
-        "💱 *Instrumentos*\n"
-        "• EUR/USD\n"
-        "• GBP/USD\n"
-        "• GBP/JPY\n\n"
-
-        "⚠️ El análisis es una estimación basada en "
-        "condiciones de mercado y no garantiza resultados."
-    )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=markets_menu(),
-    )
-
-async def show_copy_info(query):
-    text = (
-        "📘 *¿Cómo funciona CopyTrading?*\n\n"
-        "CopyTrading permite que las operaciones "
-        "de una estrategia o proveedor puedan ser "
-        "replicadas automáticamente en la cuenta "
-        "de un seguidor.\n\n"
-        "📊 El resultado de cada usuario puede variar "
-        "según el tamaño de su cuenta, configuración "
-        "de riesgo, volumen y condiciones del mercado.\n\n"
-        "⚙️ Antes de activar el servicio, revisa "
-        "las condiciones disponibles y configura "
-        "los parámetros de riesgo de tu cuenta.\n\n"
-        "⚠️ *Importante:*\n"
-        "• No existen ganancias garantizadas.\n"
-        "• Las operaciones pueden generar pérdidas.\n"
-        "• El rendimiento pasado no garantiza "
-        "resultados futuros.\n"
-        "• Cada usuario es responsable de su propia "
-        "cuenta y de la configuración que seleccione."
-    )
+def copytrading_menu():
 
     keyboard = [
         [
             InlineKeyboardButton(
-                "📈 Seguir ApexQuant",
+                "📈 Seguir Apex Quant",
                 callback_data="copy_follow",
             )
         ],
         [
             InlineKeyboardButton(
-                "⬅️ Menú principal",
+                "🏦 Abrir cuenta OneRoyal",
+                callback_data="copy_register",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "ℹ️ ¿Cómo funciona?",
+                callback_data="copy_info",
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔙 Volver",
                 callback_data="main_menu",
             )
         ],
     ]
 
-    try:
-        await query.edit_message_text(
-            text=text,
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-        )
-    except Exception as error:
-        logger.warning(
-            "No se pudo actualizar el menú de CopyTrading: %s",
-            error,
-        )
-
-async def show_copy_follow(query):
-    text = (
-        "📈 *Seguir ApexQuant*\n\n"
-        "Aquí podrás acceder al servicio de CopyTrading "
-        "de Apex Quant y seguir nuestra operativa.\n\n"
-        "⚙️ Para utilizar el servicio necesitarás "
-        "una cuenta compatible y configurar correctamente "
-        "los parámetros de riesgo.\n\n"
-        "⚠️ *Importante:*\n"
-        "• Las operaciones pueden generar pérdidas.\n"
-        "• No existen ganancias garantizadas.\n"
-        "• Cada usuario es responsable de su cuenta "
-        "y de la configuración de riesgo seleccionada."
+    return InlineKeyboardMarkup(
+        keyboard
     )
 
-    referral_url = os.getenv(
+
+async def show_copy_info(
+    query
+):
+
+    text = (
+        "📋 <b>COPYTRADING APEX QUANT</b>\n\n"
+        "Apex Quant ofrece acceso a un servicio de "
+        "CopyTrading mediante OneRoyal.\n\n"
+        "📊 Puedes conectar una cuenta compatible y "
+        "seguir las operaciones de Apex Quant.\n\n"
+        "🏦 <b>Broker:</b> OneRoyal\n"
+        "📋 <b>Servicio:</b> CopyTrading\n\n"
+        "El objetivo es facilitar el acceso de los "
+        "usuarios al servicio desde un único lugar.\n\n"
+        "⚠️ El CopyTrading implica riesgo. Las operaciones "
+        "pueden generar ganancias o pérdidas y los "
+        "resultados anteriores no garantizan resultados "
+        "futuros.\n\n"
+        "👇 Selecciona una opción:"
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=copytrading_menu(),
+        parse_mode="HTML",
+    )
+
+
+async def show_copy_follow(
+    query
+):
+
+    copy_url = os.getenv(
         "ONEROYAL_COPYTRADING_URL",
+        "",
+    ).strip()
+
+    ib_url = os.getenv(
+        "ONEROYAL_IB_URL",
         "",
     ).strip()
 
     keyboard = []
 
-    if referral_url:
+    if copy_url:
+
         keyboard.append(
             [
                 InlineKeyboardButton(
-                    "🚀 Acceder a OneRoyal",
-                    url=referral_url,
+                    "📈 Acceder al CopyTrading",
+                    url=copy_url,
+                )
+            ]
+        )
+
+    if ib_url:
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "🏦 Abrir cuenta OneRoyal",
+                    url=ib_url,
+                )
+            ]
+        )
+
+    keyboard.extend(
+        [
+            [
+                InlineKeyboardButton(
+                    "📋 Pasos para comenzar",
+                    callback_data="copy_steps",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 Volver",
+                    callback_data="copytrading",
+                )
+            ],
+        ]
+    )
+
+    text = (
+        "📈 <b>SEGUIR APEX QUANT</b>\n\n"
+        "Para utilizar el CopyTrading de Apex Quant "
+        "necesitas una cuenta compatible con el servicio.\n\n"
+        "🏦 <b>Broker:</b> OneRoyal\n"
+        "📊 <b>Servicio:</b> CopyTrading\n\n"
+        "1️⃣ Abre tu cuenta con OneRoyal.\n"
+        "2️⃣ Completa el proceso de verificación requerido.\n"
+        "3️⃣ Abre una cuenta de trading compatible.\n"
+        "4️⃣ Accede al servicio de CopyTrading.\n"
+        "5️⃣ Sigue las instrucciones para conectar tu "
+        "cuenta con Apex Quant.\n\n"
+        "⚠️ Antes de operar, revisa las condiciones, "
+        "comisiones y riesgos aplicables al servicio.\n\n"
+        "👇 Selecciona una opción:"
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
+        parse_mode="HTML",
+    )
+
+
+async def show_copy_register(
+    query
+):
+
+    ib_url = os.getenv(
+        "ONEROYAL_IB_URL",
+        "",
+    ).strip()
+
+    keyboard = []
+
+    if ib_url:
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "🚀 Registrarme en OneRoyal",
+                    url=ib_url,
                 )
             ]
         )
@@ -1984,8 +1343,8 @@ async def show_copy_follow(query):
     keyboard.append(
         [
             InlineKeyboardButton(
-                "⬅️ CopyTrading",
-                callback_data="copytrading",
+                "📋 Pasos para comenzar",
+                callback_data="copy_steps",
             )
         ]
     )
@@ -1993,831 +1352,465 @@ async def show_copy_follow(query):
     keyboard.append(
         [
             InlineKeyboardButton(
-                "🏠 Menú principal",
-                callback_data="main_menu",
+                "🔙 Volver",
+                callback_data="copytrading",
             )
+        ]
+    )
+
+    text = (
+        "🏦 <b>ABRIR CUENTA EN ONEROYAL</b>\n\n"
+        "Si todavía no tienes una cuenta, puedes "
+        "registrarte mediante el enlace de Apex Quant.\n\n"
+        "1️⃣ Pulsa <b>Registrarme en OneRoyal</b>.\n"
+        "2️⃣ Completa tus datos de registro.\n"
+        "3️⃣ Completa el proceso de verificación "
+        "requerido.\n"
+        "4️⃣ Abre una cuenta de trading compatible "
+        "con el servicio.\n"
+        "5️⃣ Después podrás continuar con la configuración "
+        "del CopyTrading.\n\n"
+        "⚠️ Los requisitos, condiciones y disponibilidad "
+        "de productos pueden cambiar. Consulta siempre "
+        "la información vigente de OneRoyal."
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
+        parse_mode="HTML",
+    )
+
+
+async def show_copy_steps(
+    query
+):
+
+    copy_url = os.getenv(
+        "ONEROYAL_COPYTRADING_URL",
+        "",
+    ).strip()
+
+    keyboard = []
+
+    if copy_url:
+
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "📈 Acceder al CopyTrading",
+                    url=copy_url,
+                )
+            ]
+        )
+
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                "🔙 Volver",
+                callback_data="copy_follow",
+            )
+        ]
+    )
+
+    text = (
+        "📋 <b>PASOS PARA COMENZAR</b>\n\n"
+        "1️⃣ <b>Regístrate</b>\n"
+        "Crea tu cuenta de OneRoyal mediante el enlace "
+        "proporcionado por Apex Quant.\n\n"
+        "2️⃣ <b>Verificación</b>\n"
+        "Completa el proceso KYC que corresponda a tu cuenta.\n\n"
+        "3️⃣ <b>Cuenta de trading</b>\n"
+        "Abre la cuenta compatible con el servicio que "
+        "quieras utilizar.\n\n"
+        "4️⃣ <b>CopyTrading</b>\n"
+        "Accede al enlace específico del CopyTrading de "
+        "Apex Quant.\n\n"
+        "5️⃣ <b>Configuración</b>\n"
+        "Sigue las instrucciones disponibles para conectar "
+        "tu cuenta y comenzar a utilizar el servicio.\n\n"
+        "⚠️ <b>Importante:</b>\n"
+        "El CopyTrading implica riesgo. Las operaciones "
+        "pueden generar pérdidas y los resultados anteriores "
+        "no garantizan resultados futuros."
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            keyboard
+        ),
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# 📊 MERCADOS
+# ============================================================
+
+async def markets_menu(
+    query
+):
+
+    text = (
+        "📊 <b>MERCADOS</b>\n\n"
+        "Consulta los principales instrumentos que "
+        "seguimos en Apex Quant.\n\n"
+        "💱 EUR/USD\n"
+        "💱 GBP/USD\n"
+        "💱 GBP/JPY\n\n"
+        "📌 Nuestro enfoque principal está orientado "
+        "al DayTrading.\n\n"
+        "⚠️ La información presentada no constituye "
+        "asesoramiento financiero."
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "📅 Calendario económico",
+                    callback_data="calendar",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 Volver",
+                    callback_data="main_menu",
+                )
+            ],
         ]
     )
 
     await query.edit_message_text(
         text=text,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
-    )
-    
-# ============================================================
-# REFERIDOS — DETALLE DE 3 NIVELES
-# ============================================================
-
-async def show_referral_levels(query):
-    user = query.from_user
-
-    register_user(user)
-
-    levels = get_referral_levels(
-        user.id
-    )
-
-    level_1_count = len(
-        levels["level_1"]
-    )
-
-    level_2_count = len(
-        levels["level_2"]
-    )
-
-    level_3_count = len(
-        levels["level_3"]
-    )
-
-    total_count = (
-        level_1_count
-        + level_2_count
-        + level_3_count
-    )
-
-    text = (
-        "👥 *Tus referidos por nivel*\n\n"
-        f"🥇 Nivel 1: *{level_1_count}*\n"
-        f"🥈 Nivel 2: *{level_2_count}*\n"
-        f"🥉 Nivel 3: *{level_3_count}*\n\n"
-        f"👥 *Total de los 3 niveles: "
-        f"{total_count}*\n\n"
-        "📌 *Nivel 1:* personas que entraron "
-        "directamente mediante tu enlace.\n\n"
-        "📌 *Nivel 2:* personas invitadas por "
-        "tus referidos de Nivel 1.\n\n"
-        "📌 *Nivel 3:* personas invitadas por "
-        "tus referidos de Nivel 2."
-    )
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "🔗 Mi enlace",
-                callback_data="referrals",
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "⬅️ Menú principal",
-                callback_data="main_menu",
-            )
-        ],
-    ]
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
-    )
-
-
-# ============================================================
-# CALENDARIO — HOY
-# ============================================================
-
-async def calendar_today(query):
-    today = today_date()
-
-    await show_events(
-        query,
-        "Calendario de hoy",
-        today,
-        today,
-    )
-
-
-# ============================================================
-# CALENDARIO — MAÑANA
-# ============================================================
-
-async def calendar_tomorrow(query):
-    tomorrow = tomorrow_date()
-
-    await show_events(
-        query,
-        "Calendario de mañana",
-        tomorrow,
-        tomorrow,
-    )
-
-
-# ============================================================
-# CALENDARIO — ESTA SEMANA
-# ============================================================
-
-async def calendar_week(query):
-    monday, sunday = week_dates()
-
-    await show_events(
-        query,
-        "Calendario de esta semana",
-        monday,
-        sunday,
-    )
-
-
-# ============================================================
-# CALENDARIO — ALTO IMPACTO
-# ============================================================
-
-async def calendar_high(query):
-    today = today_date()
-    end_date = today + timedelta(days=7)
-
-    await show_events(
-        query,
-        "Eventos de alto impacto",
-        today,
-        end_date,
-        impact="high",
-    )
-
-
-# ============================================================
-# CALENDARIO — POR DIVISA
-# ============================================================
-
-async def calendar_currency(query):
-    await show_currency_news(query)
-
-
-# ============================================================
-# ACTUALIZAR CALENDARIO
-# ============================================================
-
-async def calendar_refresh(query):
-    today = today_date()
-    end_date = today + timedelta(days=7)
-
-    await show_events(
-        query,
-        "Calendario actualizado",
-        today,
-        end_date,
-    )
-
-
-# ============================================================
-# REFERIDOS
-# ============================================================
-
-async def show_referrals(query, context):
-    user = query.from_user
-
-    register_user(user)
-
-    telegram_id = user.id
-
-    bot_username = context.bot.username or "ApexQuantFXBot"
-
-    invite_link = (
-        f"https://t.me/{bot_username}"
-        f"?start=ref_{telegram_id}"
-    )
-
-    referral_count = get_referral_count(
-        telegram_id
-    )
-
-    text = (
-        "👥 *Programa de Referidos Apex Quant*\n\n"
-        "Invita a otras personas a conocer "
-        "Apex Quant utilizando tu enlace personal.\n\n"
-        "🔗 *Tu enlace personal:*\n"
-        f"`{invite_link}`\n\n"
-        "🔢 *Tu Telegram ID:*\n"
-        f"`{telegram_id}`\n\n"
-        f"👥 *Referidos registrados:* "
-        f"*{referral_count}*\n\n"
-        "📌 Cada persona debe entrar mediante "
-        "tu enlace y pulsar *START* para que "
-        "el sistema pueda registrar la invitación.\n\n"
-        "💰 *Comisiones por suscripciones:*\n"
-        "🥇 Nivel 1: *5%*\n"
-        "🥈 Nivel 2: *3%*\n"
-        "🥉 Nivel 3: *2%*\n\n"
-        "Las comisiones se calculan sobre las "
-        "suscripciones de señales pagadas por tus referidos "
-        "en los tres niveles.\n\n"
-        "🛡️ El sistema utiliza el ID único de "
-        "Telegram para evitar autorreferidos y "
-        "duplicados."
-    )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=back_main_menu(),
-    )
-
-
-# ============================================================
-# IDIOMA
-# ============================================================
-
-async def show_language(query):
-    text = (
-        "🌐 *Idioma*\n\n"
-        "Selecciona el idioma del bot:"
-    )
-
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "🇪🇸 Español",
-                callback_data="language_es",
-            ),
-            InlineKeyboardButton(
-                "🇺🇸 English",
-                callback_data="language_en",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                "⬅️ Menú principal",
-                callback_data="main_menu",
-            )
-        ],
-    ]
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        ),
-    )
-
-
-# ============================================================
-# CONFIGURACIÓN
-# ============================================================
-
-async def show_settings(query):
-    text = (
-        "⚙️ *Configuración*\n\n"
-        "La sección de configuración se encuentra "
-        "en preparación.\n\n"
-        "Próximamente podrás gestionar preferencias "
-        "de idioma, notificaciones y otras opciones."
-    )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=back_main_menu(),
-    )
-
-
-# ============================================================
-# MANEJADOR PRINCIPAL DE BOTONES
-# ============================================================
-
-async def button_handler(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    query = update.callback_query
-
-    await query.answer()
-
-    data = query.data
-
-    logger.info(
-        "Callback recibido: %s",
-        data,
-    )
-
-    # ========================================================
-    # MENÚ PRINCIPAL
-    # ========================================================
-
-    if data == "main_menu":
-        text = (
-            "🔥 *Apex Quant*\n\n"
-            "Selecciona una opción:"
-        )
-
-        await query.edit_message_text(
-            text,
-            parse_mode="Markdown",
-            reply_markup=main_menu(query.from_user.id),
-        )
-
-        return
-
-    # ========================================================
-    # MERCADOS
-    # ========================================================
-
-    if data == "markets":
-        await show_markets(query)
-        return
-
-    # ========================================================
-    # SEÑALES
-    # ========================================================
-
-    if data == "signals":
-        await show_signals(query)
-        return
-
-    # ========================================================
-    # COPYTRADING
-    # ========================================================
-
-    if data == "copytrading":
-        await show_copy_info(query)
-        return
-
-    if data == "copy_register":
-        await show_copy_register(query)
-        return
-
-    if data == "copy_follow":
-        await show_copy_follow(query)
-        return
-
-    if data == "copy_info":
-        await show_copy_info(query)
-        return
-
-    # ========================================================
-    # 💎 FONDEO — QVAFUNDED
-    # ========================================================
-
-    if data == "funding_menu":
-        await show_funding_menu(query)
-        return
-
-    if data == "funding_about":
-        await show_funding_about(query)
-        return
-
-    if data == "funding_accounts":
-        await show_funding_accounts(query)
-        return
-
-    if data == "funding_flex":
-        await show_funding_flex(query)
-        return
-
-    if data == "funding_warning":
-        await show_funding_warning(query)
-        return
-
-    if data == "funding_link":
-        await show_funding_link(query)
-        return
-
-    # ========================================================
-    # ADMINISTRACIÓN
-    # ========================================================
-
-    if data == "admin_menu":
-        await show_admin_menu(query)
-        return
-
-    if data == "admin_send_signal":
-        if not is_admin(query.from_user.id):
-            await query.answer(
-                "⛔ No tienes permiso.",
-                show_alert=True,
-            )
-            return
-
-        await query.edit_message_text(
-            "📡 *Enviar señal*\n\n"
-            "🚧 Formulario de señales en preparación.\n\n"
-            "En el siguiente paso construiremos "
-            "el formulario completo.",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "⬅️ Administración",
-                            callback_data="admin_menu",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Menú principal",
-                            callback_data="main_menu",
-                        )
-                    ],
-                ]
-            ),
-        )
-
-        return
-
-    # ========================================================
-    # HISTORIAL DE SEÑALES — ADMIN
-    # ========================================================
-
-    if data == "admin_signal_history":
-        if not is_admin(query.from_user.id):
-            await query.answer(
-                "⛔ No tienes permiso.",
-                show_alert=True,
-            )
-            return
-
-        await query.edit_message_text(
-            "📊 *Historial de señales*\n\n"
-            "🚧 Esta sección se encuentra en preparación.",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "⬅️ Administración",
-                            callback_data="admin_menu",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Menú principal",
-                            callback_data="main_menu",
-                        )
-                    ],
-                ]
-            ),
-        )
-
-        return
-
-    # ========================================================
-    # USUARIOS ACTIVOS — ADMIN
-    # ========================================================
-
-    if data == "admin_active_users":
-        if not is_admin(query.from_user.id):
-            await query.answer(
-                "⛔ No tienes permiso.",
-                show_alert=True,
-            )
-            return
-
-        await query.edit_message_text(
-            "👥 *Suscriptores activos*\n\n"
-            "🚧 Esta sección se encuentra en preparación.",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "⬅️ Administración",
-                            callback_data="admin_menu",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Menú principal",
-                            callback_data="main_menu",
-                        )
-                    ],
-                ]
-            ),
-        )
-
-        return
-
-    # ========================================================
-    # ESTADÍSTICAS — ADMIN
-    # ========================================================
-
-    if data == "admin_statistics":
-        if not is_admin(query.from_user.id):
-            await query.answer(
-                "⛔ No tienes permiso.",
-                show_alert=True,
-            )
-            return
-
-        await query.edit_message_text(
-            "📈 *Estadísticas*\n\n"
-            "🚧 Esta sección se encuentra en preparación.",
-            parse_mode="Markdown",
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "⬅️ Administración",
-                            callback_data="admin_menu",
-                        )
-                    ],
-                    [
-                        InlineKeyboardButton(
-                            "🏠 Menú principal",
-                            callback_data="main_menu",
-                        )
-                    ],
-                ]
-            ),
-        )
-
-        return
-
-    # ========================================================
-    # SUSCRIPCIÓN DE SEÑALES
-    # ========================================================
-
-    if data == "signal_subscribe":
-        await show_signal_subscription(query)
-        return
-
-    if data == "signal_payment":
-        await show_signal_payment(query)
-        return
-
-    if data == "signal_status":
-        await show_signal_status(query)
-        return
-
-    # ========================================================
-    # REFERIDOS
-    # ========================================================
-
-    if data == "referrals":
-        await show_referrals(query, context)
-        return
-
-    if data == "referral_levels":
-        await show_referral_levels(query)
-        return
-
-    # ========================================================
-    # IDIOMA
-    # ========================================================
-
-    if data == "language":
-        await show_language(query)
-        return
-
-    if data == "language_es":
-        text = (
-            "🇪🇸 *Español seleccionado*\n\n"
-            "El idioma español está seleccionado."
-        )
-
-        await query.edit_message_text(
-            text,
-            parse_mode="Markdown",
-            reply_markup=back_main_menu(),
-        )
-
-        return
-
-    if data == "language_en":
-        text = (
-            "🇺🇸 *English selected*\n\n"
-            "English is currently selected."
-        )
-
-        await query.edit_message_text(
-            text,
-            parse_mode="Markdown",
-            reply_markup=back_main_menu(),
-        )
-
-        return
-
-    # ========================================================
-    # CONFIGURACIÓN
-    # ========================================================
-
-    if data == "settings":
-        await show_settings(query)
-        return
-
-    # ========================================================
-    # CALENDARIO
-    # ========================================================
-
-    if data == "calendar":
-        await show_calendar(query)
-        return
-
-    if data == "high_news":
-        await show_high_news(query)
-        return
-
-    if data == "currency_news":
-        await show_currency_news(query)
-        return
-
-    if data == "news_risk":
-        await show_news_risk(query)
-        return
-
-    if data == "daily_analysis":
-        await show_daily_analysis(query)
-        return
-
-    # ========================================================
-    # OPCIONES DEL CALENDARIO
-    # ========================================================
-
-    if data == "calendar_today":
-        await calendar_today(query)
-        return
-
-    if data == "calendar_tomorrow":
-        await calendar_tomorrow(query)
-        return
-
-    if data == "calendar_week":
-        await calendar_week(query)
-        return
-
-    if data == "calendar_high":
-        await calendar_high(query)
-        return
-
-    if data == "calendar_currency":
-        await calendar_currency(query)
-        return
-
-    if data == "calendar_refresh":
-        await calendar_refresh(query)
-        return
-
-    # ========================================================
-    # CALENDARIO POR DIVISA
-    # ========================================================
-
-    if data.startswith("currency_"):
-        currency = data.replace(
-            "currency_",
-            "",
-            1,
-        )
-
-        await currency_events(
-            query,
-            currency,
-        )
-
-        return
-
-    # ========================================================
-    # OPCIÓN NO DISPONIBLE
-    # ========================================================
-
-    text = (
-        "⚠️ Opción no disponible actualmente."
-    )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="Markdown",
-        reply_markup=back_main_menu(),
-    )
-
-
-# ============================================================
-# ACTIVACIÓN MANUAL DE SUSCRIPCIONES
-# ============================================================
-
-async def activate_signal_command(
-    update: Update,
-    context: ContextTypes.DEFAULT_TYPE,
-):
-    """Uso administrativo: /activate ID_TELEGRAM"""
-
-    user = update.effective_user
-
-    if not user or not is_admin(user.id):
-        if update.message:
-            await update.message.reply_text(
-                "⛔ No tienes permiso para utilizar este comando."
-            )
-        return
-
-    if not context.args:
-        await update.message.reply_text(
-            "Uso:\n/activate ID_TELEGRAM"
-        )
-        return
-
-    target_id = context.args[0].strip()
-
-    if not target_id.isdigit():
-        await update.message.reply_text(
-            "❌ El Telegram ID debe ser numérico."
-        )
-        return
-
-    subscription = activate_subscription(
-        int(target_id)
-    )
-
-    expires_at = datetime.fromisoformat(
-        subscription["expires_at"]
-    ).strftime("%d/%m/%Y")
-
-    await update.message.reply_text(
-        "✅ *Suscripción activada*\n\n"
-        f"🔢 Telegram ID: `{target_id}`\n"
-        f"💵 Suscripción: *${SIGNALS_PRICE_USDT} USDT / 30 días*\n"
-        "🌐 Red: *BEP20*\n"
-        f"📅 Vencimiento: *{expires_at}*",
-        parse_mode="Markdown",
-    )
-
-# ============================================================
-# COMANDO /START
-# ============================================================
-
-async def start(update: Update, context):
-    user = update.effective_user
-
-    text = (
-        "🔥 <b>Bienvenido a Apex Quant</b>\n\n"
-        "Centro de información y herramientas "
-        "para mercados financieros.\n\n"
-        "📊 Mercados\n"
-        "📡 Señales\n"
-        "📋 CopyTrading\n"
-        "👥 Referidos\n"
-        "💎 Fondeo\n\n"
-        "⚠️ La información, análisis y señales "
-        "no garantizan resultados. Los mercados "
-        "financieros implican riesgo de pérdidas."
-    )
-
-    await update.message.reply_text(
-        text=text,
-        reply_markup=main_menu(user.id),
+        reply_markup=keyboard,
         parse_mode="HTML",
     )
-    
-# ============================================================
-# CONFIGURACIÓN DE LA APLICACIÓN
-# ============================================================
 
-def build_application():
-    application = (
-        Application.builder()
-        .token(BOT_TOKEN)
-        .build()
+
+async def show_markets(
+    query
+):
+
+    await markets_menu(
+        query
     )
 
-    application.add_handler(
-        CommandHandler(
-            "start",
-            start,
+
+# ============================================================
+# 📡 SEÑALES
+# ============================================================
+
+async def signals_menu(
+    query
+):
+
+    text = (
+        "📡 <b>SEÑALES APEX QUANT</b>\n\n"
+        "Accede al servicio de señales de trading "
+        "de Apex Quant.\n\n"
+        "📊 Las señales son preparadas y enviadas "
+        "por el administrador.\n\n"
+        "💰 <b>Suscripción:</b> 30 USDT / 30 días\n"
+        "🌐 <b>Red de pago:</b> BEP20\n\n"
+        "⚠️ Las señales no garantizan resultados. "
+        "Los mercados financieros implican riesgo "
+        "de pérdida de capital.\n\n"
+        "👇 Selecciona una opción:"
+    )
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "💳 Suscribirme",
+                    callback_data="signal_subscription",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📋 Estado de mi suscripción",
+                    callback_data="signal_status",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 Volver",
+                    callback_data="main_menu",
+                )
+            ],
+        ]
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=keyboard,
+        parse_mode="HTML",
+    )
+
+
+async def show_signals(
+    query
+):
+
+    await signals_menu(
+        query
+    )
+
+
+# ============================================================
+# 💳 SUSCRIPCIONES DE SEÑALES
+# ============================================================
+
+def load_subscriptions():
+
+    try:
+
+        if not os.path.exists(
+            SUBSCRIPTIONS_FILE
+        ):
+            return {}
+
+        with open(
+            SUBSCRIPTIONS_FILE,
+            "r",
+            encoding="utf-8",
+        ) as file:
+
+            data = json.load(
+                file
+            )
+
+        if not isinstance(
+            data,
+            dict,
+        ):
+            return {}
+
+        return data
+
+    except Exception as error:
+
+        logger.error(
+            "Error cargando suscripciones: %s",
+            error,
         )
-    )
 
-    application.add_handler(
-        CommandHandler(
-            "activate",
-            activate_signal_command,
+        return {}
+
+
+def save_subscriptions(
+    data
+):
+
+    try:
+
+        temp_file = (
+            f"{SUBSCRIPTIONS_FILE}.tmp"
         )
-    )
 
-    application.add_handler(
-        CallbackQueryHandler(
-            button_handler,
+        with open(
+            temp_file,
+            "w",
+            encoding="utf-8",
+        ) as file:
+
+            json.dump(
+                data,
+                file,
+                ensure_ascii=False,
+                indent=2,
+            )
+
+        os.replace(
+            temp_file,
+            SUBSCRIPTIONS_FILE,
         )
+
+    except Exception as error:
+
+        logger.error(
+            "Error guardando suscripciones: %s",
+            error,
+        )
+
+
+def is_subscription_active(
+    user_id
+):
+
+    data = load_subscriptions()
+
+    subscription = data.get(
+        str(user_id)
     )
 
-    return application
+    if not subscription:
+        return False
 
+    if not subscription.get(
+        "active",
+        False,
+    ):
+        return False
 
-# ============================================================
-# INICIO DEL BOT
-# ============================================================
-
-def main():
-    logger.info(
-        "Iniciando Apex Quant..."
+    expires_at = subscription.get(
+        "expires_at"
     )
 
-    application = build_application()
+    if not expires_at:
+        return False
 
-    logger.info(
-        "Apex Quant iniciado correctamente."
+    try:
+
+        expiration = datetime.fromisoformat(
+            expires_at
+        )
+
+        if expiration <= datetime.utcnow():
+            return False
+
+        return True
+
+    except Exception:
+
+        return False
+
+
+async def show_signal_subscription(
+    query
+):
+
+    address = USDT_BEP20_ADDRESS
+
+    if address:
+
+        payment_text = (
+            "💳 <b>SUSCRIPCIÓN A SEÑALES</b>\n\n"
+            f"💰 Precio: <b>{SIGNALS_PRICE_USDT} USDT</b>\n"
+            f"📅 Duración: <b>{SIGNALS_DURATION_DAYS} días</b>\n"
+            "🌐 Red: <b>BEP20</b>\n\n"
+            "💵 <b>Dirección USDT BEP20:</b>\n"
+            f"<code>{address}</code>\n\n"
+            "📌 Envía exactamente el importe indicado "
+            "a la dirección anterior.\n\n"
+            "Después del pago, envía al administrador "
+            "el comprobante o hash de la transacción "
+            "para verificarlo y activar tu suscripción.\n\n"
+            "⚠️ Verifica cuidadosamente la red y la "
+            "dirección antes de realizar el envío."
+        )
+
+    else:
+
+        payment_text = (
+            "💳 <b>SUSCRIPCIÓN A SEÑALES</b>\n\n"
+            f"💰 Precio: <b>{SIGNALS_PRICE_USDT} USDT</b>\n"
+            f"📅 Duración: <b>{SIGNALS_DURATION_DAYS} días</b>\n"
+            "🌐 Red: <b>BEP20</b>\n\n"
+            "⚠️ La dirección de pago todavía no está "
+            "configurada.\n\n"
+            "Contacta con el administrador para recibir "
+            "las instrucciones de pago."
+        )
+
+    keyboard = InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "📋 Ver mi estado",
+                    callback_data="signal_status",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 Volver",
+                    callback_data="signals",
+                )
+            ],
+        ]
     )
 
-    application.run_polling(
-        allowed_updates=Update.ALL_TYPES,
-        drop_pending_updates=True,
+    await query.edit_message_text(
+        text=payment_text,
+        reply_markup=keyboard,
+        parse_mode="HTML",
     )
 
 
-# ============================================================
-# EJECUCIÓN
-# ============================================================
+async def show_signal_payment(
+    query
+):
 
-if __name__ == "__main__":
-    main()
+    await show_signal_subscription(
+        query
+    )
+
+
+async def show_signal_status(
+    query
+):
+
+    user_id = query.from_user.id
+
+    active = is_subscription_active(
+        user_id
+    )
+
+    if active:
+
+        data = load_subscriptions()
+
+        subscription = data.get(
+            str(user_id),
+            {},
+        )
+
+        expires_at = subscription.get(
+            "expires_at",
+            "",
+        )
+
+        text = (
+            "🟢 <b>SUSCRIPCIÓN ACTIVA</b>\n\n"
+            "📡 Tienes acceso al servicio de "
+            "señales de Apex Quant.\n\n"
+            "📅 Válida hasta:\n"
+            f"<b>{expires_at}</b>\n\n"
+            "⚠️ Recuerda que las señales no garantizan "
+            "resultados y existe riesgo de pérdida."
+        )
+
+    else:
+
+        text = (
+            "🔴 <b>SUSCRIPCIÓN INACTIVA</b>\n\n"
+            "Actualmente no tienes una suscripción "
+            "activa a las señales de Apex Quant.\n\n"
+            "💰 Precio: <b>30 USDT / 30 días</b>\n"
+            "🌐 Red: <b>BEP20</b>"
+        )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "💳 Suscribirme",
+                        callback_data="signal_subscription",
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        "🔙 Volver",
+                        callback_data="signals",
+                    )
+                ],
+            ]
+        ),
+        parse_mode="HTML",
+    )
