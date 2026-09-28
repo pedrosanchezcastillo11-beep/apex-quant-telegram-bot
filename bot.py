@@ -1814,3 +1814,995 @@ async def show_signal_status(
         ),
         parse_mode="HTML",
     )
+
+# ============================================================
+# 🛠️ ADMINISTRACIÓN
+# ============================================================
+
+def admin_menu():
+
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "📡 Enviar señal",
+                    callback_data="admin_send_signal",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📊 Historial de señales",
+                    callback_data="admin_signal_history",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "👥 Suscriptores activos",
+                    callback_data="admin_subscribers",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "📈 Estadísticas",
+                    callback_data="admin_statistics",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    "🔙 Menú principal",
+                    callback_data="main_menu",
+                )
+            ],
+        ]
+    )
+
+
+async def show_admin_menu(
+    query
+):
+
+    if not is_admin(
+        query.from_user.id
+    ):
+
+        await query.answer(
+            "⛔ Acceso no autorizado.",
+            show_alert=True,
+        )
+
+        return
+
+    text = (
+        "🛠️ <b>ADMINISTRACIÓN</b>\n\n"
+        "Panel de administración de Apex Quant.\n\n"
+        "📡 Enviar señales a suscriptores activos\n"
+        "📊 Consultar historial\n"
+        "👥 Ver suscriptores\n"
+        "📈 Consultar estadísticas\n\n"
+        "👇 Selecciona una opción:"
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=admin_menu(),
+        parse_mode="HTML",
+    )
+
+
+async def admin_send_signal(
+    query
+):
+
+    if not is_admin(
+        query.from_user.id
+    ):
+
+        await query.answer(
+            "⛔ Acceso no autorizado.",
+            show_alert=True,
+        )
+
+        return
+
+    text = (
+        "📡 <b>ENVIAR SEÑAL</b>\n\n"
+        "Para enviar una señal a los suscriptores "
+        "activos utiliza el comando:\n\n"
+        "<code>/signal</code>\n\n"
+        "Después del comando escribe el contenido "
+        "completo de la señal.\n\n"
+        "Ejemplo:\n"
+        "<code>/signal EUR/USD\n"
+        "Dirección: BUY\n"
+        "Entrada: 1.1700\n"
+        "SL: 1.1680\n"
+        "TP: 1.1760</code>\n\n"
+        "📌 La señal será enviada únicamente a los "
+        "usuarios con una suscripción activa."
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🔙 Administración",
+                        callback_data="admin_menu",
+                    )
+                ]
+            ]
+        ),
+        parse_mode="HTML",
+    )
+
+
+async def admin_signal_history(
+    query
+):
+
+    if not is_admin(
+        query.from_user.id
+    ):
+
+        await query.answer(
+            "⛔ Acceso no autorizado.",
+            show_alert=True,
+        )
+
+        return
+
+    text = (
+        "📊 <b>HISTORIAL DE SEÑALES</b>\n\n"
+        "El historial de señales estará disponible "
+        "cuando se hayan enviado las primeras señales "
+        "mediante el sistema de administración.\n\n"
+        "📌 Esta sección queda preparada para almacenar "
+        "y consultar las señales enviadas."
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🔙 Administración",
+                        callback_data="admin_menu",
+                    )
+                ]
+            ]
+        ),
+        parse_mode="HTML",
+    )
+
+
+async def admin_subscribers(
+    query
+):
+
+    if not is_admin(
+        query.from_user.id
+    ):
+
+        await query.answer(
+            "⛔ Acceso no autorizado.",
+            show_alert=True,
+        )
+
+        return
+
+    data = load_subscriptions()
+
+    active_users = []
+
+    for user_id, subscription in data.items():
+
+        if not isinstance(
+            subscription,
+            dict,
+        ):
+            continue
+
+        if not subscription.get(
+            "active",
+            False,
+        ):
+            continue
+
+        if is_subscription_active(
+            user_id
+        ):
+
+            active_users.append(
+                user_id
+            )
+
+    text = (
+        "👥 <b>SUSCRIPTORES ACTIVOS</b>\n\n"
+        f"🟢 Suscripciones activas: "
+        f"<b>{len(active_users)}</b>\n\n"
+    )
+
+    if active_users:
+
+        text += (
+            "🆔 <b>Usuarios activos:</b>\n\n"
+        )
+
+        for user_id in active_users[:50]:
+
+            text += (
+                f"• <code>{user_id}</code>\n"
+            )
+
+        if len(active_users) > 50:
+
+            text += (
+                "\nℹ️ Se muestran los primeros "
+                "50 usuarios."
+            )
+
+    else:
+
+        text += (
+            "ℹ️ Actualmente no hay suscriptores activos."
+        )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🔙 Administración",
+                        callback_data="admin_menu",
+                    )
+                ]
+            ]
+        ),
+        parse_mode="HTML",
+    )
+
+
+async def admin_statistics(
+    query
+):
+
+    if not is_admin(
+        query.from_user.id
+    ):
+
+        await query.answer(
+            "⛔ Acceso no autorizado.",
+            show_alert=True,
+        )
+
+        return
+
+    referrals = load_referrals()
+
+    subscriptions = load_subscriptions()
+
+    total_users = len(
+        referrals.get(
+            "users",
+            {},
+        )
+    )
+
+    total_subscriptions = len(
+        subscriptions
+    )
+
+    active_subscriptions = 0
+
+    for user_id in subscriptions:
+
+        if is_subscription_active(
+            user_id
+        ):
+
+            active_subscriptions += 1
+
+    text = (
+        "📈 <b>ESTADÍSTICAS</b>\n\n"
+        f"👥 Usuarios registrados: "
+        f"<b>{total_users}</b>\n"
+        f"📡 Suscripciones registradas: "
+        f"<b>{total_subscriptions}</b>\n"
+        f"🟢 Suscripciones activas: "
+        f"<b>{active_subscriptions}</b>\n"
+    )
+
+    await query.edit_message_text(
+        text=text,
+        reply_markup=InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🔙 Administración",
+                        callback_data="admin_menu",
+                    )
+                ]
+            ]
+        ),
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# 👤 COMANDO /START
+# ============================================================
+
+async def start(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    user = update.effective_user
+
+    if not user:
+        return
+
+    register_user(
+        user
+    )
+
+    if context.args:
+
+        process_referral(
+            user,
+            context.args[0],
+        )
+
+    text = (
+        "🔥 <b>Bienvenido a Apex Quant</b>\n\n"
+        "Centro de información y herramientas "
+        "para mercados financieros.\n\n"
+        "📊 <b>Mercados</b>\n"
+        "Consulta instrumentos y calendario económico.\n\n"
+        "📡 <b>Señales</b>\n"
+        "Accede al servicio de señales de Apex Quant.\n\n"
+        "📋 <b>CopyTrading</b>\n"
+        "Conoce cómo seguir Apex Quant mediante OneRoyal.\n\n"
+        "👥 <b>Referidos</b>\n"
+        "Invita usuarios y consulta tu estructura "
+        "de referidos.\n\n"
+        "🏦 <b>OneRoyal</b>\n"
+        "Accede a los servicios disponibles mediante "
+        "los enlaces de Apex Quant.\n\n"
+        "⚠️ <b>Aviso de riesgo</b>\n"
+        "El análisis y las señales no garantizan resultados. "
+        "Los mercados financieros implican riesgo de pérdida "
+        "de capital.\n\n"
+        "👇 Selecciona una opción:"
+    )
+
+    await update.message.reply_text(
+        text=text,
+        reply_markup=main_menu(
+            user.id
+        ),
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# 📡 COMANDO ADMINISTRATIVO /SIGNAL
+# ============================================================
+
+async def signal_command(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    user = update.effective_user
+
+    if not user:
+        return
+
+    if not is_admin(
+        user.id
+    ):
+
+        await update.message.reply_text(
+            "⛔ No tienes autorización para utilizar "
+            "este comando."
+        )
+
+        return
+
+    if not context.args:
+
+        await update.message.reply_text(
+            "📡 <b>ENVIAR SEÑAL</b>\n\n"
+            "Escribe la señal después del comando.\n\n"
+            "Ejemplo:\n"
+            "<code>/signal EUR/USD BUY\n"
+            "Entrada: 1.1700\n"
+            "SL: 1.1680\n"
+            "TP: 1.1760</code>",
+            parse_mode="HTML",
+        )
+
+        return
+
+    signal_text = " ".join(
+        context.args
+    )
+
+    subscriptions = load_subscriptions()
+
+    sent = 0
+    failed = 0
+
+    for user_id, subscription in subscriptions.items():
+
+        try:
+
+            if not is_subscription_active(
+                user_id
+            ):
+                continue
+
+            await context.bot.send_message(
+                chat_id=int(
+                    user_id
+                ),
+                text=(
+                    "📡 <b>SEÑAL APEX QUANT</b>\n\n"
+                    f"{signal_text}\n\n"
+                    "⚠️ Gestiona siempre tu riesgo "
+                    "de acuerdo con tu propia operativa."
+                ),
+                parse_mode="HTML",
+            )
+
+            sent += 1
+
+        except Exception as error:
+
+            failed += 1
+
+            logger.error(
+                "Error enviando señal a %s: %s",
+                user_id,
+                error,
+            )
+
+    await update.message.reply_text(
+        "✅ <b>SEÑAL PROCESADA</b>\n\n"
+        f"📡 Enviada a: <b>{sent}</b>\n"
+        f"⚠️ No enviada a: <b>{failed}</b>",
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# 💳 ACTIVACIÓN MANUAL DE SUSCRIPCIÓN
+# ============================================================
+
+async def activate_subscription(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    user = update.effective_user
+
+    if not user:
+        return
+
+    if not is_admin(
+        user.id
+    ):
+
+        await update.message.reply_text(
+            "⛔ No tienes autorización para utilizar "
+            "este comando."
+        )
+
+        return
+
+    if not context.args:
+
+        await update.message.reply_text(
+            "❌ Debes indicar el Telegram ID.\n\n"
+            "Ejemplo:\n"
+            "<code>/activate 123456789</code>",
+            parse_mode="HTML",
+        )
+
+        return
+
+    target_id = context.args[0].strip()
+
+    if not target_id.isdigit():
+
+        await update.message.reply_text(
+            "❌ El Telegram ID debe contener solamente números."
+        )
+
+        return
+
+    subscriptions = load_subscriptions()
+
+    start_time = datetime.utcnow()
+
+    expiration = (
+        start_time
+        + timedelta(
+            days=SIGNALS_DURATION_DAYS
+        )
+    )
+
+    subscriptions[
+        target_id
+    ] = {
+        "active": True,
+        "activated_at": start_time.isoformat(),
+        "expires_at": expiration.isoformat(),
+        "price_usdt": SIGNALS_PRICE_USDT,
+    }
+
+    save_subscriptions(
+        subscriptions
+    )
+
+    await update.message.reply_text(
+        "✅ <b>SUSCRIPCIÓN ACTIVADA</b>\n\n"
+        f"🆔 Telegram ID: <code>{target_id}</code>\n"
+        f"💰 Precio registrado: "
+        f"<b>{SIGNALS_PRICE_USDT} USDT</b>\n"
+        f"📅 Duración: <b>{SIGNALS_DURATION_DAYS} días</b>\n"
+        f"⏰ Expira: <b>{expiration.isoformat()}</b>",
+        parse_mode="HTML",
+    )
+
+    try:
+
+        await context.bot.send_message(
+            chat_id=int(
+                target_id
+            ),
+            text=(
+                "🎉 <b>¡SUSCRIPCIÓN ACTIVADA!</b>\n\n"
+                "📡 Tu suscripción a las señales "
+                "de Apex Quant está activa.\n\n"
+                f"📅 Válida durante "
+                f"<b>{SIGNALS_DURATION_DAYS} días</b>.\n\n"
+                "⚠️ Las señales no garantizan resultados "
+                "y los mercados financieros implican riesgo."
+            ),
+            parse_mode="HTML",
+        )
+
+    except Exception as error:
+
+        logger.error(
+            "No se pudo notificar activación a %s: %s",
+            target_id,
+            error,
+        )
+
+
+# ============================================================
+# 🔘 MANEJADOR PRINCIPAL DE BOTONES
+# ============================================================
+
+async def button_handler(
+    update: Update,
+    context: ContextTypes.DEFAULT_TYPE,
+):
+
+    query = update.callback_query
+
+    if not query:
+        return
+
+    await query.answer()
+
+    data = query.data
+
+    # --------------------------------------------------------
+    # MENÚ PRINCIPAL
+    # --------------------------------------------------------
+
+    if data == "main_menu":
+
+        await query.edit_message_text(
+            text=(
+                "🔥 <b>APEX QUANT</b>\n\n"
+                "Selecciona una opción:"
+            ),
+            reply_markup=main_menu(
+                query.from_user.id
+            ),
+            parse_mode="HTML",
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # MERCADOS
+    # --------------------------------------------------------
+
+    if data == "markets":
+
+        await show_markets(
+            query
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # SEÑALES
+    # --------------------------------------------------------
+
+    if data == "signals":
+
+        await show_signals(
+            query
+        )
+
+        return
+
+    if data == "signal_subscription":
+
+        await show_signal_subscription(
+            query
+        )
+
+        return
+
+    if data == "signal_payment":
+
+        await show_signal_payment(
+            query
+        )
+
+        return
+
+    if data == "signal_status":
+
+        await show_signal_status(
+            query
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # COPYTRADING
+    # --------------------------------------------------------
+
+    if data == "copytrading":
+
+        await show_copy_info(
+            query
+        )
+
+        return
+
+    if data == "copy_info":
+
+        await show_copy_info(
+            query
+        )
+
+        return
+
+    if data == "copy_follow":
+
+        await show_copy_follow(
+            query
+        )
+
+        return
+
+    if data == "copy_register":
+
+        await show_copy_register(
+            query
+        )
+
+        return
+
+    if data == "copy_steps":
+
+        await show_copy_steps(
+            query
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # REFERIDOS
+    # --------------------------------------------------------
+
+    if data == "referrals":
+
+        await show_referrals(
+            query
+        )
+
+        return
+
+    if data == "referral_link":
+
+        await show_referral_link(
+            query
+        )
+
+        return
+
+    if data == "referral_stats":
+
+        await show_referral_stats(
+            query
+        )
+
+        return
+
+    if data == "referral_commissions":
+
+        await show_referral_commissions(
+            query
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # CALENDARIO
+    # --------------------------------------------------------
+
+    if data == "calendar":
+
+        await show_calendar(
+            query
+        )
+
+        return
+
+    if data == "calendar_today":
+
+        await show_calendar_today(
+            query
+        )
+
+        return
+
+    if data == "calendar_tomorrow":
+
+        await show_calendar_tomorrow(
+            query
+        )
+
+        return
+
+    if data == "calendar_week":
+
+        await show_calendar_week(
+            query
+        )
+
+        return
+
+    if data == "calendar_high":
+
+        await show_calendar_high(
+            query
+        )
+
+        return
+
+    if data == "calendar_currency":
+
+        await currency_events(
+            query
+        )
+
+        return
+
+    if data.startswith(
+        "currency_"
+    ):
+
+        currency = data.split(
+            "_",
+            1,
+        )[1]
+
+        await show_currency_events(
+            query,
+            currency,
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # IDIOMA
+    # --------------------------------------------------------
+
+    if data == "language":
+
+        await show_language(
+            query
+        )
+
+        return
+
+    if data == "language_es":
+
+        await set_language(
+            query,
+            "es",
+        )
+
+        return
+
+    if data == "language_en":
+
+        await set_language(
+            query,
+            "en",
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # CONFIGURACIÓN
+    # --------------------------------------------------------
+
+    if data == "settings":
+
+        await show_settings(
+            query
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # ADMINISTRACIÓN
+    # --------------------------------------------------------
+
+    if data == "admin_menu":
+
+        await show_admin_menu(
+            query
+        )
+
+        return
+
+    if data == "admin_send_signal":
+
+        await admin_send_signal(
+            query
+        )
+
+        return
+
+    if data == "admin_signal_history":
+
+        await admin_signal_history(
+            query
+        )
+
+        return
+
+    if data == "admin_subscribers":
+
+        await admin_subscribers(
+            query
+        )
+
+        return
+
+    if data == "admin_statistics":
+
+        await admin_statistics(
+            query
+        )
+
+        return
+
+    # --------------------------------------------------------
+    # CALLBACK DESCONOCIDO
+    # --------------------------------------------------------
+
+    await query.edit_message_text(
+        text=(
+            "⚠️ <b>Opción no disponible</b>\n\n"
+            "Esta función todavía no está disponible."
+        ),
+        reply_markup=back_main_menu(),
+        parse_mode="HTML",
+    )
+
+
+# ============================================================
+# 🚨 MANEJADOR DE ERRORES
+# ============================================================
+
+async def error_handler(
+    update,
+    context,
+):
+
+    logger.error(
+        "Exception while handling an update:",
+        exc_info=context.error,
+    )
+
+
+# ============================================================
+# 🚀 INICIO DEL BOT
+# ============================================================
+
+def main():
+
+    application = (
+        Application.builder()
+        .token(
+            BOT_TOKEN
+        )
+        .build()
+    )
+
+    # --------------------------------------------------------
+    # COMANDOS
+    # --------------------------------------------------------
+
+    application.add_handler(
+        CommandHandler(
+            "start",
+            start,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "signal",
+            signal_command,
+        )
+    )
+
+    application.add_handler(
+        CommandHandler(
+            "activate",
+            activate_subscription,
+        )
+    )
+
+    # --------------------------------------------------------
+    # BOTONES
+    # --------------------------------------------------------
+
+    application.add_handler(
+        CallbackQueryHandler(
+            button_handler
+        )
+    )
+
+    # --------------------------------------------------------
+    # ERRORES
+    # --------------------------------------------------------
+
+    application.add_error_handler(
+        error_handler
+    )
+
+    logger.info(
+        "🔥 Apex Quant Bot iniciado correctamente."
+    )
+
+    application.run_polling(
+        allowed_updates=Update.ALL_TYPES
+    )
+
+
+# ============================================================
+# EJECUCIÓN
+# ============================================================
+
+if __name__ == "__main__":
+    main()
