@@ -1931,21 +1931,82 @@ async def show_copy_info(query):
         ],
         [
             InlineKeyboardButton(
-                "⬅️ CopyTrading",
-                callback_data="copytrading",
+                "⬅️ Menú principal",
+                callback_data="main_menu",
             )
         ],
     ]
 
+    try:
+        await query.edit_message_text(
+            text=text,
+            parse_mode="Markdown",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+        )
+    except Exception as error:
+        logger.warning(
+            "No se pudo actualizar el menú de CopyTrading: %s",
+            error,
+        )
+
+async def show_copy_follow(query):
+    text = (
+        "📈 *Seguir ApexQuant*\n\n"
+        "Aquí podrás acceder al servicio de CopyTrading "
+        "de Apex Quant y seguir nuestra operativa.\n\n"
+        "⚙️ Para utilizar el servicio necesitarás "
+        "una cuenta compatible y configurar correctamente "
+        "los parámetros de riesgo.\n\n"
+        "⚠️ *Importante:*\n"
+        "• Las operaciones pueden generar pérdidas.\n"
+        "• No existen ganancias garantizadas.\n"
+        "• Cada usuario es responsable de su cuenta "
+        "y de la configuración de riesgo seleccionada."
+    )
+
+    referral_url = os.getenv(
+        "ONEROYAL_COPYTRADING_URL",
+        "",
+    ).strip()
+
+    keyboard = []
+
+    if referral_url:
+        keyboard.append(
+            [
+                InlineKeyboardButton(
+                    "🚀 Acceder a OneRoyal",
+                    url=referral_url,
+                )
+            ]
+        )
+
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                "⬅️ CopyTrading",
+                callback_data="copytrading",
+            )
+        ]
+    )
+
+    keyboard.append(
+        [
+            InlineKeyboardButton(
+                "🏠 Menú principal",
+                callback_data="main_menu",
+            )
+        ]
+    )
+
     await query.edit_message_text(
-        text,
+        text=text,
         parse_mode="Markdown",
         reply_markup=InlineKeyboardMarkup(
             keyboard
         ),
     )
-
-
+    
 # ============================================================
 # REFERIDOS — DETALLE DE 3 NIVELES
 # ============================================================
