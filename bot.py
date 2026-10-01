@@ -1385,11 +1385,16 @@ async def signals_menu(query):
         ],
         [
             InlineKeyboardButton(
+                "📜 Términos y condiciones",
+                callback_data="signals_terms"
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 "🔙 Volver",
                 callback_data="back_main"
             )
         ]
-    ]
 
     text = (
         "📡 <b>SEÑALES APEX QUANT</b>\n\n"
@@ -1417,7 +1422,7 @@ async def show_signals(query):
 
 
 # ============================================================
-# SUSCRIPCIONES
+# SUBSCRIPTIONS
 # ============================================================
 
 def load_subscriptions():
@@ -1427,22 +1432,7 @@ def load_subscriptions():
         if not os.path.exists(
             SUBSCRIPTIONS_FILE
         ):
-            return {}
-
-        with open(
-            SUBSCRIPTIONS_FILE,
-            "r",
-            encoding="utf-8"
-        ) as file:
-
-            data = json.load(file)
-
-        if isinstance(data, dict):
-            return data
-
-        return {}
-
-    except Exception as error:
+        
 
         logger.error(
             "Error cargando suscripciones: %s",
@@ -2012,7 +2002,45 @@ async def verify_payment_command(update: Update, context: ContextTypes.DEFAULT_T
     if credited:
         logger.info("Comisiones acreditadas por %s: %s", tx_hash, credited)
 
+async def signals_terms(query):
+    text = (
+        "⚠️ <b>TÉRMINOS Y CONDICIONES — SEÑALES APEX QUANT</b>\n\n"
+        "1️⃣ La especulación en los mercados financieros conlleva riesgos, "
+        "invierta sólo lo que está dispuesto a arriesgar.\n\n"
+        "2️⃣ Las señales ofrecidas por ApexQuant no son garantía de ganancias, "
+        "utilize una correcta gestión de riesgo con un lotaje acorde a su capital, "
+        "resultados pasados no garantizan resultados futuros.\n\n"
+        "3️⃣ Las señales están disponibles sólo días laborales del mercado.\n\n"
+        "4️⃣ Los días no laborales, cierres, festivos, feriados o alguna razón "
+        "que resulte en el cierre del mercado, no se enviarán señales.\n\n"
+        "5️⃣ Sólo se enviarán señales cuando se cumplan las condiciones según "
+        "la metodología de ApexQuant, de no cumplirse las condiciones, no se "
+        "enviarán señales con el fin de evitar las sobre operaciones que resulten "
+        "en pérdidas innecesarias.\n\n"
+        "6️⃣ Al activar su suscripción usted acepta éstos términos y condiciones."
+    )
 
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                "🔙 Volver a Señales",
+                callback_data="signals"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🏠 Menú principal",
+                callback_data="back_main"
+            )
+        ]
+    ]
+
+    await query.edit_message_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+    
 async def signals_status(query):
     user_id = query.from_user.id
     subscription = get_subscription(user_id)
@@ -3694,6 +3722,11 @@ async def button_handler(
         if data == "signals_status":
 
             await signals_status(query)
+            return
+
+        if data == "signals_terms":
+
+            await signals_terms(query)
             return
 
         # ====================================================
