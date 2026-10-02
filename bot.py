@@ -2924,8 +2924,7 @@ def academy_menu():
                 callback_data="back_main"
             )
         ],
-    ]
-])
+    ])
 
 async def show_academy(query):
     text = (
