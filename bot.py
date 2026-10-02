@@ -1395,6 +1395,7 @@ async def signals_menu(query):
                 callback_data="back_main"
             )
         ]
+    ]
 
     text = (
         "📡 <b>SEÑALES APEX QUANT</b>\n\n"
@@ -1429,10 +1430,22 @@ def load_subscriptions():
 
     try:
 
-        if not os.path.exists(
-            SUBSCRIPTIONS_FILE
-        ):
-        
+        if not os.path.exists(SUBSCRIPTIONS_FILE):
+            return {}
+
+        with open(
+            SUBSCRIPTIONS_FILE,
+            "r",
+            encoding="utf-8"
+        ) as file:
+            data = json.load(file)
+
+        if isinstance(data, dict):
+            return data
+
+        return {}
+
+    except Exception as error:
 
         logger.error(
             "Error cargando suscripciones: %s",
@@ -2471,84 +2484,276 @@ ACADEMY_MODULES = {
     "m1": {
         "title": "📘 Módulo 1 — Fundamentos del Trading",
         "text": (
-            "Qué es el trading, mercados financieros, participantes, "
-            "activos, precio, liquidez, spread, apalancamiento y órdenes.\n\n"
-            "Aprenderás la diferencia entre mercado spot y derivados, "
-            "qué significa comprar/vender y por qué la gestión del riesgo "
-            "es parte del proceso desde el primer día."
+            "El trading consiste en analizar mercados financieros y ejecutar "
+            "operaciones buscando aprovechar movimientos del precio. En este "
+            "módulo conocerás los principales mercados, activos y participantes.\n\n"
+            
+            "📚 Conceptos básicos:\n"
+            "• Forex, índices, materias primas, acciones y criptomonedas.\n"
+            "• Compradores y vendedores.\n"
+            "• Precio, spread, volatilidad y liquidez.\n"
+            "• Órdenes de mercado y órdenes pendientes.\n"
+            "• Stop Loss y Take Profit.\n"
+            "• Apalancamiento y margen.\n\n"
+            
+            "También aprenderás por qué una operación nunca debe considerarse "
+            "garantizada y por qué la gestión del riesgo forma parte del proceso "
+            "desde el primer día."
         ),
     },
+
     "m2": {
         "title": "📊 Módulo 2 — Análisis Técnico",
         "text": (
-            "Velas japonesas, soporte y resistencia, tendencia, rangos, "
-            "máximos y mínimos, volumen, RSI 14, temporalidades y lectura "
-            "del contexto.\n\n"
-            "El objetivo es aprender a interpretar el gráfico antes de "
-            "buscar una entrada."
+            "El análisis técnico estudia el comportamiento histórico del precio "
+            "mediante gráficos, estructura, volumen e indicadores.\n\n"
+            
+            "📈 Elementos principales:\n"
+            "• Velas japonesas.\n"
+            "• Soportes y resistencias.\n"
+            "• Tendencias y rangos.\n"
+            "• Máximos y mínimos.\n"
+            "• Volumen.\n"
+            "• RSI 14.\n"
+            "• Temporalidades.\n"
+            "• Contexto del mercado.\n\n"
+            
+            "La finalidad no es utilizar muchos indicadores, sino aprender a "
+            "leer el gráfico y comprender qué está haciendo el precio antes "
+            "de buscar una posible entrada."
         ),
         "visual": "candles",
     },
+
     "m3": {
         "title": "📰 Módulo 3 — Análisis Fundamental",
         "text": (
-            "Calendario económico, inflación, empleo, tipos de interés, "
-            "PIB, bancos centrales y cómo una noticia puede cambiar la "
-            "volatilidad y la liquidez.\n\n"
-            "Se estudia el contexto macroeconómico sin convertir una noticia "
-            "en una garantía de dirección."
+            "El análisis fundamental estudia los factores económicos que pueden "
+            "influir en los mercados y modificar la percepción de los participantes.\n\n"
+            
+            "🌍 Conceptos importantes:\n"
+            "• Inflación y CPI.\n"
+            "• Empleo y desempleo.\n"
+            "• PIB.\n"
+            "• Tipos de interés.\n"
+            "• Decisiones de bancos centrales.\n"
+            "• PMI y actividad económica.\n"
+            "• Noticias de alto impacto.\n"
+            "• Calendario económico.\n\n"
+            
+            "Una noticia puede aumentar la volatilidad y modificar la liquidez "
+            "del mercado. Por eso el contexto fundamental debe estudiarse junto "
+            "con la estructura del precio, sin asumir que una noticia garantiza "
+            "una determinada dirección."
         ),
     },
+
     "m4": {
         "title": "🏦 Módulo 4 — Análisis Institucional",
         "text": (
-            "Liquidez, desequilibrios, desplazamiento, zonas de interés, "
-            "premium/discount y lectura de flujo institucional.\n\n"
-            "Se explica cómo combinar contexto, estructura y liquidez en vez "
-            "de utilizar un concepto aislado."
+            "El análisis institucional busca comprender cómo la liquidez, el "
+            "desequilibrio y el desplazamiento del precio pueden formar parte "
+            "de la dinámica de los grandes participantes del mercado.\n\n"
+            
+            "🏦 Conceptos estudiados:\n"
+            "• Liquidez.\n"
+            "• Desplazamientos.\n"
+            "• Desequilibrios.\n"
+            "• Premium y Discount.\n"
+            "• Zonas de interés.\n"
+            "• Order Blocks.\n"
+            "• Fair Value Gaps.\n"
+            "• Barridos de liquidez.\n\n"
+            
+            "El objetivo es comprender cómo relacionar estos conceptos con "
+            "estructura y contexto, evitando utilizar una sola señal de manera aislada."
         ),
     },
+
     "m5": {
-        "title": "🧩 Módulo 5 — Estructura y Liquidez",
+        "title": "🧩 Módulo 5 — Estructura de Mercado",
         "text": (
-            "HH/HL, LH/LL, BOS, CHOCH, Order Blocks (OB), Fair Value Gaps "
-            "(FVG), highs/lows, equal highs/lows y liquidity sweeps.\n\n"
-            "Se trabaja la secuencia: contexto → liquidez → cambio/ruptura "
-            "de estructura → zona de interés → confirmación."
+            "La estructura permite estudiar la secuencia de máximos y mínimos "
+            "para determinar cómo se está comportando el precio.\n\n"
+            
+            "📐 Conceptos principales:\n"
+            "• HH — Higher High.\n"
+            "• HL — Higher Low.\n"
+            "• LH — Lower High.\n"
+            "• LL — Lower Low.\n"
+            "• BOS — Break of Structure.\n"
+            "• CHOCH — Change of Character.\n"
+            "• Tendencia y consolidación.\n"
+            "• Cambios de estructura.\n\n"
+            
+            "Una lectura estructural debe considerar la temporalidad utilizada "
+            "y el contexto general. Una ruptura aislada no necesariamente significa "
+            "que toda la estructura haya cambiado."
         ),
         "visual": "structure",
     },
+
     "m6": {
-        "title": "⏱️ Módulo 6 — Estilos de Trading",
+        "title": "💧 Módulo 6 — Liquidez y Flujo del Precio",
         "text": (
-            "🥷 Scalping — operaciones muy cortas.\n"
-            "📅 Day Trading — posiciones abiertas y cerradas dentro del día.\n"
-            "🌊 Swing Trading — movimientos de varios días/semanas.\n"
-            "🏛️ Position Trading — tesis de mayor plazo.\n\n"
-            "Apex Quant prioriza una ejecución disciplinada y adaptada al "
-            "contexto, sin asumir que un estilo sirve para todos."
+            "La liquidez representa zonas donde pueden concentrarse órdenes y "
+            "donde el precio puede reaccionar o desplazarse con mayor intensidad.\n\n"
+            
+            "💧 Conceptos:\n"
+            "• Highs y Lows.\n"
+            "• Equal Highs y Equal Lows.\n"
+            "• Liquidity Pools.\n"
+            "• Buy-side liquidity.\n"
+            "• Sell-side liquidity.\n"
+            "• Liquidity Sweep.\n"
+            "• Barridos de máximos y mínimos.\n"
+            "• Desplazamiento posterior a la toma de liquidez.\n\n"
+            
+            "La liquidez debe analizarse dentro del contexto de la estructura. "
+            "Un barrido por sí solo no constituye una confirmación automática "
+            "de entrada."
         ),
     },
+
     "m7": {
-        "title": "🛡️ Módulo 7 — Gestión de Riesgo",
+        "title": "🟦 Módulo 7 — Order Blocks y Fair Value Gaps",
         "text": (
-            "Riesgo por operación, tamaño de posición, Stop Loss, relación "
-            "riesgo/beneficio, drawdown, pérdida máxima, correlación y "
-            "disciplina.\n\n"
-            "Una estrategia puede tener operaciones perdedoras; el objetivo "
-            "es que una pérdida individual no comprometa la cuenta."
-        ),
-    },
-    "m8": {
-        "title": "🚀 Módulo 8 — Avanzado y Aplicación Apex Quant",
-        "text": (
-            "Multi-timeframe, confluencias, BOS/CHOCH + OB/FVG + liquidez, "
-            "sesiones, backtesting, diario de trading y construcción de un "
-            "plan operativo.\n\n"
-            "Instrumentos de referencia de Apex Quant: GBP/USD, GBP/JPY, "
-            "US30 y XAU/USD con especial cautela."
+            "Los Order Blocks y Fair Value Gaps son conceptos utilizados para "
+            "identificar zonas de interés dentro del movimiento del precio.\n\n"
+            
+            "🟦 Order Block (OB):\n"
+            "Zona asociada a un movimiento de desplazamiento que puede convertirse "
+            "en referencia para estudiar una reacción posterior.\n\n"
+            
+            "🟩 Fair Value Gap (FVG):\n"
+            "Desequilibrio generado por un desplazamiento rápido del precio que "
+            "deja una zona con poca interacción relativa entre determinadas velas.\n\n"
+            
+            "La utilidad aumenta cuando OB/FVG se combinan con estructura, liquidez, "
+            "temporalidad y contexto. Ninguno de estos conceptos garantiza por sí "
+            "solo una reacción del mercado."
         ),
         "visual": "fvg_ob",
+    },
+
+    "m8": {
+        "title": "⏱️ Módulo 8 — Estilos de Trading",
+        "text": (
+            "Existen diferentes formas de operar según el horizonte temporal "
+            "y la duración de las posiciones.\n\n"
+            
+            "🥷 Scalping:\n"
+            "Operaciones de muy corta duración, normalmente enfocadas en movimientos "
+            "pequeños del precio.\n\n"
+            
+            "📅 Day Trading:\n"
+            "Las posiciones se abren y cierran durante la misma jornada.\n\n"
+            
+            "🌊 Swing Trading:\n"
+            "Busca movimientos que pueden durar varios días o semanas.\n\n"
+            
+            "🏛️ Position Trading:\n"
+            "Trabaja con tesis de mayor plazo y movimientos más amplios.\n\n"
+            
+            "Cada estilo requiere una metodología, gestión del riesgo y planificación "
+            "adaptadas a su horizonte temporal."
+        ),
+    },
+
+    "m9": {
+        "title": "🛡️ Módulo 9 — Gestión de Riesgo",
+        "text": (
+            "La gestión de riesgo busca limitar el impacto de las operaciones "
+            "perdedoras y proteger el capital durante una serie de resultados.\n\n"
+            
+            "🛡️ Elementos fundamentales:\n"
+            "• Riesgo por operación.\n"
+            "• Tamaño de posición.\n"
+            "• Stop Loss.\n"
+            "• Take Profit.\n"
+            "• Relación riesgo/beneficio.\n"
+            "• Drawdown.\n"
+            "• Pérdida máxima.\n"
+            "• Correlación entre posiciones.\n"
+            "• Exposición total.\n\n"
+            
+            "Una estrategia puede atravesar operaciones perdedoras. La gestión "
+            "del riesgo busca evitar que una operación individual o una secuencia "
+            "desfavorable comprometa de forma excesiva la cuenta."
+        ),
+    },
+
+    "m10": {
+        "title": "🧠 Módulo 10 — Psicología y Disciplina",
+        "text": (
+            "La ejecución de una metodología también implica controlar la forma "
+            "en que se toman decisiones antes, durante y después de una operación.\n\n"
+            
+            "🧠 Aspectos importantes:\n"
+            "• Disciplina.\n"
+            "• Paciencia.\n"
+            "• Control de impulsos.\n"
+            "• Evitar el revenge trading.\n"
+            "• Evitar el overtrading.\n"
+            "• Seguir un plan previamente definido.\n"
+            "• Aceptar operaciones perdedoras.\n"
+            "• Mantener un diario de trading.\n\n"
+            
+            "La disciplina consiste en ejecutar un proceso definido incluso cuando "
+            "el resultado de una operación individual no coincide con la expectativa."
+        ),
+    },
+
+    "m11": {
+        "title": "🔬 Módulo 11 — Construcción de un Análisis",
+        "text": (
+            "Una metodología puede organizarse mediante un proceso de análisis "
+            "de varias etapas, comenzando por el contexto y terminando con una "
+            "decisión de ejecución o de espera.\n\n"
+            
+            "🔎 Flujo de análisis:\n"
+            "1️⃣ Contexto de mercado.\n"
+            "2️⃣ Temporalidad superior.\n"
+            "3️⃣ Dirección y estructura.\n"
+            "4️⃣ Identificación de liquidez.\n"
+            "5️⃣ Búsqueda de BOS o CHOCH.\n"
+            "6️⃣ Identificación de OB/FVG.\n"
+            "7️⃣ Confirmación en temporalidad inferior.\n"
+            "8️⃣ Definición de invalidación.\n"
+            "9️⃣ Cálculo del riesgo.\n"
+            "🔟 Ejecución o espera.\n\n"
+            
+            "El análisis también puede complementarse con volumen, calendario "
+            "económico y sesiones de mercado."
+        ),
+    },
+
+    "m12": {
+        "title": "🚀 Módulo 12 — Aplicación Avanzada Apex Quant",
+        "text": (
+            "En el nivel avanzado se combinan los conceptos estudiados para "
+            "construir un proceso de análisis más completo.\n\n"
+            
+            "🚀 Áreas de aplicación:\n"
+            "• Análisis Multi-Timeframe.\n"
+            "• Contexto + estructura + liquidez.\n"
+            "• BOS/CHOCH + OB/FVG.\n"
+            "• Sesiones de Londres y Nueva York.\n"
+            "• Volumen y volatilidad.\n"
+            "• Calendario económico.\n"
+            "• Backtesting.\n"
+            "• Diario de trading.\n"
+            "• Estadísticas de una metodología.\n"
+            "• Construcción y revisión de un plan operativo.\n\n"
+            
+            "📊 Instrumentos de referencia dentro del ecosistema Apex Quant:\n"
+            "GBP/USD, GBP/JPY, US30 y XAU/USD, aplicando especial cautela "
+            "a instrumentos con elevada volatilidad.\n\n"
+            
+            "El objetivo de este módulo es aprender a integrar información y "
+            "tomar decisiones mediante un proceso definido, no buscar una señal "
+            "infalible."
+        ),
     },
 }
 
@@ -2651,24 +2856,111 @@ def make_academy_visual(kind):
 
 def academy_menu():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📘 Fundamentos", callback_data="academy_m1"), InlineKeyboardButton("📊 Técnico", callback_data="academy_m2")],
-        [InlineKeyboardButton("📰 Fundamental", callback_data="academy_m3"), InlineKeyboardButton("🏦 Institucional", callback_data="academy_m4")],
-        [InlineKeyboardButton("🧩 Estructura/Liquidez", callback_data="academy_m5")],
-        [InlineKeyboardButton("⏱️ Estilos", callback_data="academy_m6"), InlineKeyboardButton("🛡️ Riesgo", callback_data="academy_m7")],
-        [InlineKeyboardButton("🚀 Avanzado", callback_data="academy_m8")],
-        [InlineKeyboardButton("🔙 Volver", callback_data="back_main")],
-    ])
-
+        [
+            InlineKeyboardButton(
+                "📘 Fundamentos",
+                callback_data="academy_m1"
+            ),
+            InlineKeyboardButton(
+                "📊 Técnico",
+                callback_data="academy_m2"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "📰 Fundamental",
+                callback_data="academy_m3"
+            ),
+            InlineKeyboardButton(
+                "🏦 Institucional",
+                callback_data="academy_m4"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🧩 Estructura",
+                callback_data="academy_m5"
+            ),
+            InlineKeyboardButton(
+                "💧 Liquidez",
+                callback_data="academy_m6"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🟦 OB / FVG",
+                callback_data="academy_m7"
+            ),
+            InlineKeyboardButton(
+                "⏱️ Estilos",
+                callback_data="academy_m8"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🛡️ Riesgo",
+                callback_data="academy_m9"
+            ),
+            InlineKeyboardButton(
+                "🧠 Psicología",
+                callback_data="academy_m10"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔬 Construir análisis",
+                callback_data="academy_m11"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🚀 Aplicación Avanzada",
+                callback_data="academy_m12"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                "🔙 Volver",
+                callback_data="back_main"
+            )
+        ],
+    ]
+])
 
 async def show_academy(query):
     text = (
         "🎓 <b>ACADEMIA APEX QUANT</b>\n\n"
-        "Ruta educativa de trading desde los fundamentos hasta la aplicación avanzada.\n\n"
-        "📚 8 módulos · 📊 Técnico · 📰 Fundamental · 🏦 Institucional · 🧩 Estructura/Liquidez · 🛡️ Riesgo\n\n"
-        "Selecciona un módulo para comenzar."
+        "📚 Ruta educativa de trading desde los fundamentos "
+        "hasta la aplicación avanzada.\n\n"
+        
+        "Aprende progresivamente:\n"
+        "📘 Fundamentos\n"
+        "📊 Análisis Técnico\n"
+        "📰 Análisis Fundamental\n"
+        "🏦 Análisis Institucional\n"
+        "🧩 Estructura de Mercado\n"
+        "💧 Liquidez\n"
+        "🟦 Order Blocks y FVG\n"
+        "⏱️ Estilos de Trading\n"
+        "🛡️ Gestión de Riesgo\n"
+        "🧠 Psicología y Disciplina\n"
+        "🔬 Construcción de Análisis\n"
+        "🚀 Aplicación Avanzada\n\n"
+        
+        "📖 <b>12 módulos educativos</b>\n\n"
+        
+        "Selecciona un módulo para comenzar o continuar tu aprendizaje.\n\n"
+        
+        "⚠️ <b>Importante:</b> el contenido de esta Academia tiene "
+        "finalidad exclusivamente educativa. El aprendizaje de una "
+        "metodología no garantiza resultados futuros en los mercados."
     )
-    await query.edit_message_text(text, parse_mode="HTML", reply_markup=academy_menu())
 
+    await query.edit_message_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=academy_menu()
+    )
 
 async def show_academy_module(query, module_id):
     module = ACADEMY_MODULES.get(module_id)
