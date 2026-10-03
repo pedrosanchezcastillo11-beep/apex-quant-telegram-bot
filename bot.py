@@ -391,6 +391,12 @@ def main_menu(user_id=None):
         ],
         [
             InlineKeyboardButton(
+                "🟢 Broker OneRoyal",
+                callback_data="broker_oneroyal"
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 "🌐 Idioma",
                 callback_data="language"
             ),
@@ -646,6 +652,67 @@ async def show_missing_ib_link(query):
             ]
         ])
     )
+
+# ============================================================
+# BROKER ONEROYAL
+# ============================================================
+
+async def show_broker_oneroyal(query):
+
+    text = (
+        "🟢 <b>BROKER ONEROYAL</b>\n\n"
+        "Apex Quant integra OneRoyal como broker dentro del ecosistema "
+        "del proyecto. Desde aquí puedes consultar información general "
+        "y acceder directamente al registro mediante el enlace IB de Apex Quant.\n\n"
+        "⚡ <b>Cuentas ECN</b>\n"
+        "OneRoyal ofrece opciones de cuenta orientadas a condiciones "
+        "de ejecución y trading electrónico. Las condiciones concretas "
+        "de cada cuenta, spreads, comisiones, requisitos y disponibilidad "
+        "pueden variar según la jurisdicción y el tipo de cuenta.\n\n"
+        "📊 <b>Plataformas e instrumentos</b>\n"
+        "El registro permite acceder a los servicios y productos que "
+        "OneRoyal tenga disponibles para tu jurisdicción. Antes de operar, "
+        "revisa las condiciones oficiales de la cuenta que elijas.\n\n"
+        "🔗 <b>Registro mediante Apex Quant</b>\n"
+        "Utiliza el botón de abajo para registrarte con el enlace IB "
+        "asociado a Apex Quant.\n\n"
+        "⚠️ <b>Riesgo:</b> el trading de instrumentos financieros puede "
+        "ocasionar pérdidas. Verifica las condiciones, costes y riesgos "
+        "antes de depositar fondos o comenzar a operar."
+    )
+
+    keyboard = []
+
+    if ONEROYAL_IB_URL:
+        keyboard.append([
+            InlineKeyboardButton(
+                "🚀 Registrarme con OneRoyal",
+                url=ONEROYAL_IB_URL
+            )
+        ])
+    else:
+        keyboard.append([
+            InlineKeyboardButton(
+                "⚠️ Enlace OneRoyal no configurado",
+                callback_data="ib_link_missing"
+            )
+        ])
+
+    keyboard.extend([
+        [
+            InlineKeyboardButton(
+                "🔙 Volver",
+                callback_data="back_main"
+            )
+        ]
+    ])
+
+    await query.edit_message_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
 
 # ============================================================
 # MERCADOS
@@ -4187,6 +4254,15 @@ async def button_handler(
                 )
             )
 
+            return
+
+        # ====================================================
+        # BROKER ONEROYAL
+        # ====================================================
+
+        if data == "broker_oneroyal":
+
+            await show_broker_oneroyal(query)
             return
 
         # ====================================================
