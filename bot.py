@@ -504,7 +504,7 @@ def copytrading_menu():
     return InlineKeyboardMarkup(keyboard)
 
 
-async def show_copy_info(query):
+async def show_copy_menu(query):
 
     text = (
         "📋 <b>COPYTRADING — APEX QUANT</b>\n\n"
@@ -521,6 +521,41 @@ async def show_copy_info(query):
         "pasados no garantizan resultados futuros.\n\n"
         "👇 Utiliza las opciones disponibles para "
         "registrarte y comenzar."
+    )
+
+    await query.edit_message_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=copytrading_menu()
+    )
+
+
+async def show_copy_info(query):
+
+    text = (
+        "ℹ️ <b>¿CÓMO FUNCIONA EL COPYTRADING?</b>\n\n"
+        "El CopyTrading permite que las operaciones de una "
+        "estrategia puedan replicarse en la cuenta de un usuario, "
+        "según la configuración y las condiciones disponibles "
+        "en la plataforma.\n\n"
+        "🔄 <b>Funcionamiento general:</b>\n"
+        "1️⃣ Registra y configura tu cuenta OneRoyal.\n"
+        "2️⃣ Accede al servicio de CopyTrading.\n"
+        "3️⃣ Busca y selecciona <b>Apex Quant</b>.\n"
+        "4️⃣ Configura los parámetros de riesgo y tamaño de operación "
+        "que permita la plataforma.\n"
+        "5️⃣ Una vez conectada la cuenta, las operaciones de la estrategia "
+        "pueden replicarse automáticamente según la configuración establecida.\n"
+        "6️⃣ Supervisa periódicamente tu cuenta y verifica que la conexión "
+        "y los parámetros continúen activos.\n\n"
+        "📊 <b>El resultado puede variar</b> según el capital, configuración "
+        "de riesgo, tamaño de las posiciones, ejecución y condiciones del mercado.\n\n"
+        "⚠️ <b>Importante:</b>\n"
+        "• El CopyTrading no garantiza beneficios.\n"
+        "• Las operaciones pueden generar pérdidas.\n"
+        "• El rendimiento pasado no garantiza resultados futuros.\n"
+        "• Cada usuario es responsable de su cuenta y de la configuración "
+        "de riesgo que utilice."
     )
 
     await query.edit_message_text(
@@ -4333,7 +4368,7 @@ async def button_handler(
 
         if data == "copytrading":
 
-            await show_copy_info(query)
+            await show_copy_menu(query)
             return
 
         if data == "copy_info":
