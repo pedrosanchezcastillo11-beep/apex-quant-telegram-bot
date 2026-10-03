@@ -2487,7 +2487,7 @@ ACADEMY_MODULES = {
             "El trading consiste en analizar mercados financieros y ejecutar "
             "operaciones buscando aprovechar movimientos del precio. En este "
             "módulo conocerás los principales mercados, activos y participantes.\n\n"
-            
+
             "📚 Conceptos básicos:\n"
             "• Forex, índices, materias primas, acciones y criptomonedas.\n"
             "• Compradores y vendedores.\n"
@@ -2495,7 +2495,81 @@ ACADEMY_MODULES = {
             "• Órdenes de mercado y órdenes pendientes.\n"
             "• Stop Loss y Take Profit.\n"
             "• Apalancamiento y margen.\n\n"
-            
+
+            "🔎 ¿Qué significa cada concepto?\n\n"
+
+            "💱 Forex:\n"
+            "Mercado en el que se negocian pares de divisas, como GBP/USD o GBP/JPY. "
+            "El precio representa la relación de valor entre una divisa y otra.\n\n"
+
+            "📊 Índices:\n"
+            "Instrumentos que representan el comportamiento de un conjunto de acciones "
+            "o de un segmento de un mercado. US30 es un ejemplo de índice seguido dentro "
+            "del ecosistema de Apex Quant.\n\n"
+
+            "🛢️ Materias primas:\n"
+            "Activos relacionados con recursos físicos, como petróleo, oro u otras "
+            "materias primas. Su precio puede verse afectado por oferta, demanda y "
+            "factores económicos o geopolíticos.\n\n"
+
+            "🏢 Acciones:\n"
+            "Representan una participación en una empresa. Su precio puede reaccionar "
+            "a resultados empresariales, expectativas de crecimiento, noticias y condiciones "
+            "generales del mercado.\n\n"
+
+            "🪙 Criptomonedas:\n"
+            "Activos digitales negociados en mercados específicos. Pueden presentar "
+            "cambios de precio y volatilidad importantes.\n\n"
+
+            "🟢 Compradores y vendedores:\n"
+            "Son los participantes que generan órdenes de compra y venta. El movimiento "
+            "del precio refleja el encuentro continuo entre oferta y demanda.\n\n"
+
+            "💵 Precio:\n"
+            "Es el valor al que un activo puede negociarse en un momento determinado. "
+            "En un gráfico, su evolución permite estudiar estructura, tendencia, rangos "
+            "y posibles zonas de interés.\n\n"
+
+            "↔️ Spread:\n"
+            "Es la diferencia entre el precio disponible para vender y el precio disponible "
+            "para comprar. Representa un coste de transacción que puede variar según el "
+            "instrumento y las condiciones del mercado.\n\n"
+
+            "🌪️ Volatilidad:\n"
+            "Describe la magnitud y velocidad con la que puede variar el precio. Una mayor "
+            "volatilidad puede producir movimientos más amplios y también aumentar el riesgo "
+            "de ejecución y de pérdida.\n\n"
+
+            "💧 Liquidez:\n"
+            "Hace referencia a la facilidad con la que pueden ejecutarse operaciones sin "
+            "producir cambios excesivos en el precio. En análisis de mercado también se "
+            "utiliza el término para estudiar zonas donde pueden concentrarse órdenes.\n\n"
+
+            "⚡ Orden de mercado:\n"
+            "Orden diseñada para ejecutarse inmediatamente al mejor precio disponible, "
+            "según la liquidez existente en ese momento.\n\n"
+
+            "📌 Orden pendiente:\n"
+            "Orden colocada para ejecutarse si el precio alcanza una condición determinada, "
+            "como un nivel de precio previamente establecido.\n\n"
+
+            "🛑 Stop Loss (SL):\n"
+            "Nivel definido para limitar la pérdida de una operación si el precio se mueve "
+            "en contra de la hipótesis planteada.\n\n"
+
+            "🎯 Take Profit (TP):\n"
+            "Nivel establecido para cerrar una operación con un beneficio objetivo si el "
+            "precio alcanza la zona prevista.\n\n"
+
+            "⚙️ Apalancamiento:\n"
+            "Permite controlar una posición de mayor tamaño utilizando una cantidad menor "
+            "de capital como margen. También aumenta la exposición y puede amplificar las "
+            "pérdidas, por lo que requiere una gestión de riesgo estricta.\n\n"
+
+            "💼 Margen:\n"
+            "Capital que el intermediario puede requerir para mantener abierta una posición "
+            "apalancada. No debe confundirse con la pérdida máxima permitida.\n\n"
+
             "También aprenderás por qué una operación nunca debe considerarse "
             "garantizada y por qué la gestión del riesgo forma parte del proceso "
             "desde el primer día."
@@ -2507,7 +2581,7 @@ ACADEMY_MODULES = {
         "text": (
             "El análisis técnico estudia el comportamiento histórico del precio "
             "mediante gráficos, estructura, volumen e indicadores.\n\n"
-            
+
             "📈 Elementos principales:\n"
             "• Velas japonesas.\n"
             "• Soportes y resistencias.\n"
@@ -2517,7 +2591,58 @@ ACADEMY_MODULES = {
             "• RSI 14.\n"
             "• Temporalidades.\n"
             "• Contexto del mercado.\n\n"
-            
+
+            "🔎 ¿Qué significa cada elemento?\n\n"
+
+            "🕯️ Velas japonesas:\n"
+            "Cada vela resume el movimiento del precio durante un período determinado "
+            "y muestra apertura, máximo, mínimo y cierre. El cuerpo y las mechas ayudan "
+            "a observar presión compradora, presión vendedora y rechazo de precios.\n\n"
+
+            "🧱 Soportes:\n"
+            "Zonas donde históricamente el precio ha encontrado presión compradora o "
+            "donde una caída ha tenido dificultad para continuar. No son líneas exactas "
+            "ni garantizan que el precio vaya a rebotar.\n\n"
+
+            "🚧 Resistencias:\n"
+            "Zonas donde históricamente el precio ha encontrado presión vendedora o "
+            "dificultad para continuar subiendo. Al igual que un soporte, debe entenderse "
+            "como una zona y no como una barrera infalible.\n\n"
+
+            "📈 Tendencia:\n"
+            "Dirección predominante del movimiento del precio. Puede estudiarse mediante "
+            "la secuencia de máximos y mínimos y debe analizarse en la temporalidad utilizada.\n\n"
+
+            "↔️ Rango:\n"
+            "Situación en la que el precio oscila dentro de una zona relativamente definida "
+            "sin establecer una dirección sostenida. Los extremos del rango pueden convertirse "
+            "en referencias para estudiar liquidez y reacciones.\n\n"
+
+            "🔝 Máximos y mínimos:\n"
+            "Puntos relevantes donde el precio ha alcanzado un máximo o mínimo respecto al "
+            "movimiento que lo rodea. Su secuencia permite estudiar la estructura del mercado.\n\n"
+
+            "📊 Volumen:\n"
+            "Mide la actividad negociada o, dependiendo del mercado y plataforma, una medida "
+            "relacionada con la actividad de negociación. Puede ayudar a contextualizar "
+            "movimientos, pero no debe interpretarse de forma aislada.\n\n"
+
+            "📉 RSI 14:\n"
+            "Indicador de momentum que compara la magnitud de movimientos alcistas y bajistas "
+            "durante 14 períodos. Lecturas altas pueden indicar fuerte momentum y lecturas "
+            "bajas pueden indicar presión bajista; una lectura de sobrecompra o sobreventa "
+            "no significa por sí sola que el precio deba revertirse.\n\n"
+
+            "⏱️ Temporalidades:\n"
+            "Son los períodos que representa cada vela del gráfico, como M5, H1 o H4. "
+            "Una misma estructura puede verse diferente según la temporalidad, por lo que "
+            "el contexto debe mantenerse coherente entre ellas.\n\n"
+
+            "🌐 Contexto del mercado:\n"
+            "Es la combinación de información que rodea al movimiento actual del precio: "
+            "estructura, tendencia o rango, liquidez, volatilidad, temporalidad y, cuando "
+            "corresponde, factores fundamentales o eventos económicos.\n\n"
+
             "La finalidad no es utilizar muchos indicadores, sino aprender a "
             "leer el gráfico y comprender qué está haciendo el precio antes "
             "de buscar una posible entrada."
@@ -2530,7 +2655,7 @@ ACADEMY_MODULES = {
         "text": (
             "El análisis fundamental estudia los factores económicos que pueden "
             "influir en los mercados y modificar la percepción de los participantes.\n\n"
-            
+
             "🌍 Conceptos importantes:\n"
             "• Inflación y CPI.\n"
             "• Empleo y desempleo.\n"
@@ -2540,7 +2665,7 @@ ACADEMY_MODULES = {
             "• PMI y actividad económica.\n"
             "• Noticias de alto impacto.\n"
             "• Calendario económico.\n\n"
-            
+
             "Una noticia puede aumentar la volatilidad y modificar la liquidez "
             "del mercado. Por eso el contexto fundamental debe estudiarse junto "
             "con la estructura del precio, sin asumir que una noticia garantiza "
@@ -2554,7 +2679,7 @@ ACADEMY_MODULES = {
             "El análisis institucional busca comprender cómo la liquidez, el "
             "desequilibrio y el desplazamiento del precio pueden formar parte "
             "de la dinámica de los grandes participantes del mercado.\n\n"
-            
+
             "🏦 Conceptos estudiados:\n"
             "• Liquidez.\n"
             "• Desplazamientos.\n"
@@ -2564,7 +2689,59 @@ ACADEMY_MODULES = {
             "• Order Blocks.\n"
             "• Fair Value Gaps.\n"
             "• Barridos de liquidez.\n\n"
-            
+
+            "🔎 ¿Qué significa cada concepto?\n\n"
+
+            "💧 Liquidez:\n"
+            "En este contexto se refiere a zonas donde pueden existir concentraciones "
+            "de órdenes. Generalmente puede encontrarse alrededor de máximos y mínimos "
+            "visibles, Equal Highs, Equal Lows, extremos de rangos y otros niveles que "
+            "muchos participantes pueden observar. Estas zonas pueden estudiarse como "
+            "posibles objetivos del precio, pero no implican que necesariamente serán tomadas.\n\n"
+
+            "🚀 Desplazamiento:\n"
+            "Movimiento relativamente rápido y decidido del precio, normalmente caracterizado "
+            "por velas amplias y una salida clara de una zona. Puede proporcionar información "
+            "sobre un cambio en el equilibrio entre compradores y vendedores.\n\n"
+
+            "⚖️ Desequilibrio:\n"
+            "Situación en la que el precio se desplaza con rapidez y deja una zona en la que "
+            "la negociación relativa ha sido menor frente al movimiento posterior. Los FVG "
+            "son una forma concreta de estudiar este tipo de desequilibrio.\n\n"
+
+            "🔺 Premium:\n"
+            "Zona situada en la parte superior de un rango de referencia. En metodologías que "
+            "utilizan Premium/Discount, se estudia como un área donde el precio se encuentra "
+            "relativamente elevado dentro de ese rango.\n\n"
+
+            "🔻 Discount:\n"
+            "Zona situada en la parte inferior de un rango de referencia. Se estudia como un "
+            "área donde el precio se encuentra relativamente bajo dentro de ese rango.\n\n"
+
+            "🎯 Zonas de interés:\n"
+            "Áreas del gráfico que merecen atención por la combinación de factores como "
+            "estructura, liquidez, desplazamiento, OB, FVG, soporte o resistencia. Una zona "
+            "de interés no equivale automáticamente a una entrada.\n\n"
+
+            "🟦 Order Block (OB):\n"
+            "Zona asociada a una vela o conjunto de velas inmediatamente anterior a un "
+            "desplazamiento relevante. Para considerarlo una zona de mayor interés, debe "
+            "existir contexto y una reacción o desplazamiento posterior que le dé relevancia. "
+            "Un simple bloque de velas sin desplazamiento ni contexto no debe tratarse "
+            "automáticamente como un Order Block válido.\n\n"
+
+            "🟩 Fair Value Gap (FVG):\n"
+            "Desequilibrio de tres velas en el que existe una separación entre el rango de "
+            "la primera y la tercera vela, dejando una zona con poca interacción relativa "
+            "durante el desplazamiento. Un FVG es más relevante cuando aparece acompañado "
+            "por desplazamiento y contexto estructural. No todo hueco visual debe considerarse "
+            "un FVG de calidad.\n\n"
+
+            "🧹 Barrido de liquidez:\n"
+            "Movimiento en el que el precio atraviesa un máximo, mínimo o agrupación de "
+            "liquidez visible y posteriormente puede reaccionar o desplazarse en sentido "
+            "contrario. El barrido por sí solo no confirma una entrada.\n\n"
+
             "El objetivo es comprender cómo relacionar estos conceptos con "
             "estructura y contexto, evitando utilizar una sola señal de manera aislada."
         ),
@@ -2575,7 +2752,7 @@ ACADEMY_MODULES = {
         "text": (
             "La estructura permite estudiar la secuencia de máximos y mínimos "
             "para determinar cómo se está comportando el precio.\n\n"
-            
+
             "📐 Conceptos principales:\n"
             "• HH — Higher High.\n"
             "• HL — Higher Low.\n"
@@ -2585,7 +2762,53 @@ ACADEMY_MODULES = {
             "• CHOCH — Change of Character.\n"
             "• Tendencia y consolidación.\n"
             "• Cambios de estructura.\n\n"
-            
+
+            "🔎 ¿Qué significa cada concepto?\n\n"
+
+            "🔝 HH — Higher High:\n"
+            "Máximo más alto que el máximo estructural anterior. Una secuencia de HH, "
+            "acompañada de mínimos crecientes, puede formar parte de una estructura alcista.\n\n"
+
+            "🔼 HL — Higher Low:\n"
+            "Mínimo que queda por encima del mínimo estructural anterior. Una sucesión de "
+            "HL ayuda a identificar la permanencia de una estructura alcista mientras se "
+            "mantenga el contexto que la sostiene.\n\n"
+
+            "🔻 LH — Lower High:\n"
+            "Máximo que queda por debajo del máximo estructural anterior. Forma parte de "
+            "una secuencia que puede caracterizar una estructura bajista.\n\n"
+
+            "🔽 LL — Lower Low:\n"
+            "Mínimo más bajo que el mínimo estructural anterior. Una sucesión de LL junto "
+            "con máximos decrecientes puede formar parte de una estructura bajista.\n\n"
+
+            "💥 BOS — Break of Structure:\n"
+            "Ruptura de un punto estructural relevante en la dirección del movimiento que "
+            "se está desarrollando. Para darle mayor significado debe observarse qué nivel "
+            "fue roto, en qué temporalidad y con qué contexto. Una simple mecha o ruptura "
+            "sin contexto no debe interpretarse automáticamente como un BOS de alta calidad.\n\n"
+
+            "🔄 CHOCH — Change of Character:\n"
+            "Concepto utilizado para describir una alteración relevante en el comportamiento "
+            "de la estructura, especialmente cuando el precio rompe una secuencia que venía "
+            "dominando el movimiento. Debe estudiarse junto con los swings y el contexto; "
+            "no toda ruptura pequeña representa un cambio completo de tendencia.\n\n"
+
+            "📈 Tendencia:\n"
+            "Movimiento direccional en el que existe una secuencia relativamente consistente "
+            "de máximos y mínimos. La estructura alcista suele presentar HH/HL y la bajista "
+            "LH/LL.\n\n"
+
+            "↔️ Consolidación:\n"
+            "Período en el que el precio permanece dentro de una zona y no desarrolla una "
+            "secuencia direccional clara. Dentro de una consolidación pueden formarse zonas "
+            "de liquidez en sus extremos.\n\n"
+
+            "🔄 Cambio de estructura:\n"
+            "Modificación de la secuencia previa de máximos y mínimos. Para estudiarlo "
+            "correctamente es necesario diferenciar una ruptura menor de una ruptura de un "
+            "swing estructural relevante y considerar la temporalidad utilizada.\n\n"
+
             "Una lectura estructural debe considerar la temporalidad utilizada "
             "y el contexto general. Una ruptura aislada no necesariamente significa "
             "que toda la estructura haya cambiado."
@@ -2598,7 +2821,7 @@ ACADEMY_MODULES = {
         "text": (
             "La liquidez representa zonas donde pueden concentrarse órdenes y "
             "donde el precio puede reaccionar o desplazarse con mayor intensidad.\n\n"
-            
+
             "💧 Conceptos:\n"
             "• Highs y Lows.\n"
             "• Equal Highs y Equal Lows.\n"
@@ -2608,7 +2831,66 @@ ACADEMY_MODULES = {
             "• Liquidity Sweep.\n"
             "• Barridos de máximos y mínimos.\n"
             "• Desplazamiento posterior a la toma de liquidez.\n\n"
-            
+
+            "🔎 ¿Qué significa cada concepto y dónde suele encontrarse?\n\n"
+
+            "🔝 Highs:\n"
+            "Máximos relevantes del precio. La liquidez compradora puede concentrarse "
+            "por encima de máximos visibles porque allí pueden ubicarse órdenes de stop "
+            "de posiciones cortas y órdenes de compra condicionadas.\n\n"
+
+            "🔻 Lows:\n"
+            "Mínimos relevantes del precio. La liquidez vendedora puede concentrarse "
+            "por debajo de mínimos visibles porque allí pueden ubicarse stops de posiciones "
+            "largas y órdenes de venta condicionadas.\n\n"
+
+            "🟰 Equal Highs (EQH):\n"
+            "Dos o más máximos situados aproximadamente en el mismo nivel. Al ser una "
+            "referencia visual evidente, pueden convertirse en una zona donde se estudie "
+            "la posible concentración de liquidez por encima de esos máximos.\n\n"
+
+            "🟰 Equal Lows (EQL):\n"
+            "Dos o más mínimos situados aproximadamente en el mismo nivel. Pueden formar "
+            "una zona de interés donde se estudie liquidez por debajo de esos mínimos.\n\n"
+
+            "💧 Liquidity Pool:\n"
+            "Agrupación o zona donde pueden concentrarse órdenes relacionadas con niveles "
+            "de precio observables. Puede aparecer alrededor de máximos, mínimos, EQH, EQL, "
+            "extremos de rangos y otros niveles que muchos participantes pueden identificar.\n\n"
+
+            "🟢 Buy-side Liquidity (BSL):\n"
+            "Liquidez que suele estudiarse por encima de máximos relevantes. Puede estar "
+            "relacionada con stops de vendedores y órdenes de compra condicionadas. No "
+            "significa que todas esas órdenes estén necesariamente visibles o presentes "
+            "en una cantidad conocida.\n\n"
+
+            "🔴 Sell-side Liquidity (SSL):\n"
+            "Liquidez que suele estudiarse por debajo de mínimos relevantes. Puede estar "
+            "relacionada con stops de compradores y órdenes de venta condicionadas.\n\n"
+
+            "🧹 Liquidity Sweep:\n"
+            "Movimiento en el que el precio atraviesa una zona de liquidez visible y "
+            "posteriormente muestra una reacción o desplazamiento. El término no implica "
+            "por sí solo que todas las órdenes de esa zona hayan sido ejecutadas.\n\n"
+
+            "↕️ Barrido de máximos y mínimos:\n"
+            "Un barrido de máximos ocurre cuando el precio supera un máximo relevante; "
+            "un barrido de mínimos ocurre cuando cae por debajo de un mínimo relevante. "
+            "Después debe observarse la reacción del precio y la estructura antes de "
+            "considerar cualquier interpretación adicional.\n\n"
+
+            "🚀 Desplazamiento posterior a la toma de liquidez:\n"
+            "Movimiento decidido que aparece después de atravesar una zona de liquidez. "
+            "Cuando existe un desplazamiento claro y una ruptura estructural coherente, "
+            "puede aportar más información que el barrido aislado.\n\n"
+
+            "📍 ¿Dónde suele encontrarse la liquidez?\n"
+            "Generalmente se estudia alrededor de máximos y mínimos visibles, Equal Highs, "
+            "Equal Lows, extremos de rangos, zonas donde el precio ha dejado estructuras "
+            "muy evidentes y niveles que muchos participantes pueden utilizar para colocar "
+            "stops u órdenes condicionadas. Estas zonas deben tratarse como áreas de estudio, "
+            "no como niveles con liquidez garantizada.\n\n"
+
             "La liquidez debe analizarse dentro del contexto de la estructura. "
             "Un barrido por sí solo no constituye una confirmación automática "
             "de entrada."
@@ -2620,15 +2902,45 @@ ACADEMY_MODULES = {
         "text": (
             "Los Order Blocks y Fair Value Gaps son conceptos utilizados para "
             "identificar zonas de interés dentro del movimiento del precio.\n\n"
-            
+
             "🟦 Order Block (OB):\n"
-            "Zona asociada a un movimiento de desplazamiento que puede convertirse "
-            "en referencia para estudiar una reacción posterior.\n\n"
-            
+            "Zona asociada a una vela o conjunto de velas inmediatamente anterior a un "
+            "desplazamiento relevante. Se utiliza como referencia para estudiar una posible "
+            "reacción posterior del precio.\n\n"
+
+            "✅ ¿Cuándo puede considerarse válido un Order Block?\n"
+            "Un OB adquiere mayor relevancia cuando está asociado a un desplazamiento claro, "
+            "participa en una ruptura estructural relevante o aparece en un contexto donde "
+            "liquidez y estructura aportan una razón adicional para estudiarlo. La zona debe "
+            "definirse de forma coherente con la metodología utilizada y su invalidación "
+            "debe estar previamente determinada.\n\n"
+
+            "⚠️ ¿Qué NO convierte automáticamente una zona en OB?\n"
+            "Una vela alcista o bajista aislada no es automáticamente un Order Block. "
+            "Si no existe desplazamiento, contexto estructural o una razón clara para "
+            "considerar esa zona relevante, debe evitarse etiquetarla simplemente como OB.\n\n"
+
             "🟩 Fair Value Gap (FVG):\n"
-            "Desequilibrio generado por un desplazamiento rápido del precio que "
-            "deja una zona con poca interacción relativa entre determinadas velas.\n\n"
-            
+            "Desequilibrio de tres velas generado por un desplazamiento en el que queda "
+            "una separación entre el rango de la primera y la tercera vela, dejando una "
+            "zona con poca interacción relativa durante ese movimiento.\n\n"
+
+            "✅ ¿Cuándo puede considerarse válido un FVG?\n"
+            "Debe existir la configuración de tres velas correspondiente y una separación "
+            "real entre los rangos que forman el desequilibrio. Su relevancia aumenta cuando "
+            "aparece junto a un desplazamiento claro y dentro de un contexto estructural "
+            "coherente.\n\n"
+
+            "⚠️ ¿Qué NO convierte automáticamente una zona en FVG?\n"
+            "No toda separación visual, mecha o movimiento rápido debe etiquetarse como FVG. "
+            "Primero debe comprobarse que la estructura de tres velas cumple la definición "
+            "utilizada y después evaluar el contexto.\n\n"
+
+            "🔗 OB + FVG:\n"
+            "Cuando ambas zonas aparecen relacionadas con un mismo desplazamiento y además "
+            "coinciden con estructura, liquidez y temporalidad coherentes, pueden estudiarse "
+            "como una confluencia. Aun así, ninguna combinación garantiza una reacción futura.\n\n"
+
             "La utilidad aumenta cuando OB/FVG se combinan con estructura, liquidez, "
             "temporalidad y contexto. Ninguno de estos conceptos garantiza por sí "
             "solo una reacción del mercado."
@@ -2641,20 +2953,15 @@ ACADEMY_MODULES = {
         "text": (
             "Existen diferentes formas de operar según el horizonte temporal "
             "y la duración de las posiciones.\n\n"
-            
             "🥷 Scalping:\n"
             "Operaciones de muy corta duración, normalmente enfocadas en movimientos "
             "pequeños del precio.\n\n"
-            
             "📅 Day Trading:\n"
             "Las posiciones se abren y cierran durante la misma jornada.\n\n"
-            
             "🌊 Swing Trading:\n"
             "Busca movimientos que pueden durar varios días o semanas.\n\n"
-            
             "🏛️ Position Trading:\n"
             "Trabaja con tesis de mayor plazo y movimientos más amplios.\n\n"
-            
             "Cada estilo requiere una metodología, gestión del riesgo y planificación "
             "adaptadas a su horizonte temporal."
         ),
@@ -2665,7 +2972,6 @@ ACADEMY_MODULES = {
         "text": (
             "La gestión de riesgo busca limitar el impacto de las operaciones "
             "perdedoras y proteger el capital durante una serie de resultados.\n\n"
-            
             "🛡️ Elementos fundamentales:\n"
             "• Riesgo por operación.\n"
             "• Tamaño de posición.\n"
@@ -2676,7 +2982,6 @@ ACADEMY_MODULES = {
             "• Pérdida máxima.\n"
             "• Correlación entre posiciones.\n"
             "• Exposición total.\n\n"
-            
             "Una estrategia puede atravesar operaciones perdedoras. La gestión "
             "del riesgo busca evitar que una operación individual o una secuencia "
             "desfavorable comprometa de forma excesiva la cuenta."
@@ -2688,7 +2993,6 @@ ACADEMY_MODULES = {
         "text": (
             "La ejecución de una metodología también implica controlar la forma "
             "en que se toman decisiones antes, durante y después de una operación.\n\n"
-            
             "🧠 Aspectos importantes:\n"
             "• Disciplina.\n"
             "• Paciencia.\n"
@@ -2698,7 +3002,6 @@ ACADEMY_MODULES = {
             "• Seguir un plan previamente definido.\n"
             "• Aceptar operaciones perdedoras.\n"
             "• Mantener un diario de trading.\n\n"
-            
             "La disciplina consiste en ejecutar un proceso definido incluso cuando "
             "el resultado de una operación individual no coincide con la expectativa."
         ),
@@ -2710,7 +3013,6 @@ ACADEMY_MODULES = {
             "Una metodología puede organizarse mediante un proceso de análisis "
             "de varias etapas, comenzando por el contexto y terminando con una "
             "decisión de ejecución o de espera.\n\n"
-            
             "🔎 Flujo de análisis:\n"
             "1️⃣ Contexto de mercado.\n"
             "2️⃣ Temporalidad superior.\n"
@@ -2722,7 +3024,6 @@ ACADEMY_MODULES = {
             "8️⃣ Definición de invalidación.\n"
             "9️⃣ Cálculo del riesgo.\n"
             "🔟 Ejecución o espera.\n\n"
-            
             "El análisis también puede complementarse con volumen, calendario "
             "económico y sesiones de mercado."
         ),
@@ -2733,7 +3034,6 @@ ACADEMY_MODULES = {
         "text": (
             "En el nivel avanzado se combinan los conceptos estudiados para "
             "construir un proceso de análisis más completo.\n\n"
-            
             "🚀 Áreas de aplicación:\n"
             "• Análisis Multi-Timeframe.\n"
             "• Contexto + estructura + liquidez.\n"
@@ -2745,18 +3045,17 @@ ACADEMY_MODULES = {
             "• Diario de trading.\n"
             "• Estadísticas de una metodología.\n"
             "• Construcción y revisión de un plan operativo.\n\n"
-            
+
             "📊 Instrumentos de referencia dentro del ecosistema Apex Quant:\n"
             "GBP/USD, GBP/JPY, US30 y XAU/USD, aplicando especial cautela "
             "a instrumentos con elevada volatilidad.\n\n"
-            
+
             "El objetivo de este módulo es aprender a integrar información y "
             "tomar decisiones mediante un proceso definido, no buscar una señal "
             "infalible."
         ),
     },
 }
-
 
 def _png_from_pixels(width, height, pixels):
     raw = bytearray()
