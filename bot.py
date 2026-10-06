@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID", "").strip()
-CONSENTS_FILE = os.getenv("CONSENTS_FILE", "consents.json").strip()
+CONSENTS_FILE = os.getenv("CONSENTS_FILE", "/data/consents.json").strip()
 
 # ============================================================
 # ONEROYAL
