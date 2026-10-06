@@ -2390,29 +2390,48 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     user_id = user.id
 
+    # 1. Primero se comprueba la aceptación de los términos.
     if not has_accepted_terms(user_id):
-        membership = await is_community_member(context.bot, user_id)
-    if membership is not True:
         await update.message.reply_text(
-            "🔥 <b>APEXQUANT</b>\n\n"
-            "Tus términos ya están aceptados. Antes de acceder al menú principal debes unirte a la Comunidad oficial de ApexQuant.",
+            TERMS_TEXT,
             parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Comunidad", callback_data="community_gate")]])
+            reply_markup=terms_keyboard()
         )
         return
 
+    # 2. Con los términos aceptados, se comprueba el acceso a la Comunidad.
+    membership = await is_community_member(context.bot, user_id)
+
+    if membership is not True:
+        await update.message.reply_text(
+            "🌐 <b>COMUNIDAD APEXQUANT</b>\n\n"
+            "Tus términos ya están aceptados. Antes de acceder al menú principal "
+            "debes formar parte de la Comunidad oficial de ApexQuant.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📢 Unirme al canal", url=COMMUNITY_INVITE_URL)],
+                [InlineKeyboardButton("✅ Verificar acceso", callback_data="community_verify")]
+            ])
+        )
+        return
+
+    # 3. Términos aceptados + Comunidad verificada = menú principal.
     text = (
         "🔥 <b>Bienvenido a ApexQuant</b>\n\n"
         "Centro de información, formación y herramientas relacionadas con los mercados financieros.\n\n"
         "📊 <b>Mercados</b> — calendario económico y eventos relevantes.\n"
-        "📋 <b>CopyTrading</b> — acceso a la oferta ApexQuant en OneRoyal.\n"        "\n"
+        "📋 <b>CopyTrading</b> — acceso a la oferta ApexQuant en OneRoyal.\n"
         "👥 <b>Referidos</b> — guía de IB, Sub-IB y Public Agent.\n"
         "🎓 <b>Academia</b> — formación progresiva de trading.\n"
         "🌐 <b>Comunidad</b> — canal y redes oficiales de ApexQuant.\n"
         "🟢 <b>OneRoyal</b> — broker y registro mediante ApexQuant.\n\n"
         "⚠️ <b>Aviso de riesgo:</b> ningún contenido de ApexQuant garantiza resultados financieros."
     )
-    await update.message.reply_text(text, parse_mode="HTML", reply_markup=main_menu(user_id))
+    await update.message.reply_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=main_menu(user_id)
+    )
 
 
 
