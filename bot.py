@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation
 from html import escape
 from urllib.request import Request, urlopen
 from urllib.parse import urlencode
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta, date, timezone
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
@@ -72,6 +72,18 @@ FINANCE_CALENDAR_BASE = (
 )
 
 # ============================================================
+# COMUNIDAD APEXQUANT
+# ============================================================
+
+COMMUNITY_INVITE_URL = os.getenv("COMMUNITY_INVITE_URL", "https://t.me/+FS_bDcUdF4AyOTFh").strip()
+COMMUNITY_CHANNEL_ID = os.getenv("COMMUNITY_CHANNEL_ID", "").strip()
+COMMUNITY_CONFIG_FILE = os.getenv("COMMUNITY_CONFIG_FILE", "/data/community_config.json").strip()
+COMMUNITY_STATS_FILE = os.getenv("COMMUNITY_STATS_FILE", "/data/community_stats.json").strip()
+COMMUNITY_EVENTS_FILE = os.getenv("COMMUNITY_EVENTS_FILE", "/data/community_events.json").strip()
+COMMUNITY_DAILY_TARGET = 3
+HIGH_IMPACT_CHECK_SECONDS = 300
+
+# ============================================================
 # FUNCIONES GENERALES
 # ============================================================
 
@@ -95,6 +107,9 @@ def main_menu(user_id=None):
             InlineKeyboardButton("🎓 Academia", callback_data="academy")
         ],
         [
+            InlineKeyboardButton("🌐 Comunidad", callback_data="community")
+        ],
+        [
             InlineKeyboardButton("🟢 Broker OneRoyal", callback_data="broker_oneroyal")
         ],
         [
@@ -102,7 +117,144 @@ def main_menu(user_id=None):
             InlineKeyboardButton("⚙️ Configuración", callback_data="settings")
         ]
     ]
+    if user_id is not None and is_admin(user_id):
+        keyboard.append([InlineKeyboardButton("🛠️ Administración", callback_data="admin_menu")])
     return InlineKeyboardMarkup(keyboard)
+
+
+# ============================================================
+# COMUNIDAD — CONFIGURACIÓN Y ACCESO
+# ============================================================
+
+def _load_json_file(path, default):
+    try:
+        if not os.path.exists(path):
+            return default
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data
+    except Exception as error:
+        logger.error("Error leyendo %s: %s", path, error)
+        return default
+
+
+def _save_json_file(path, data):
+    try:
+        directory = os.path.dirname(path)
+        if directory and not os.path.exists(directory):
+            os.makedirs(directory, exist_ok=True)
+        temp = path + ".tmp"
+        with open(temp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(temp, path)
+        return True
+    except Exception as error:
+        logger.error("Error guardando %s: %s", path, error)
+        return False
+
+
+def get_community_channel_id():
+    if COMMUNITY_CHANNEL_ID:
+        return COMMUNITY_CHANNEL_ID
+    data = _load_json_file(COMMUNITY_CONFIG_FILE, {})
+    return str(data.get("channel_id", "")).strip()
+
+
+def save_community_channel_id(channel_id, title=""):
+    return _save_json_file(COMMUNITY_CONFIG_FILE, {"channel_id": str(channel_id), "title": title, "updated_at": datetime.utcnow().isoformat() + "Z"})
+
+
+def _today_key():
+    return date.today().isoformat()
+
+
+def community_post_count():
+    data = _load_json_file(COMMUNITY_STATS_FILE, {})
+    return int(data.get(_today_key(), 0) or 0)
+
+
+def register_community_post():
+    data = _load_json_file(COMMUNITY_STATS_FILE, {})
+    key = _today_key()
+    data[key] = int(data.get(key, 0) or 0) + 1
+    for old_key in sorted(list(data))[:-14]:
+        data.pop(old_key, None)
+    _save_json_file(COMMUNITY_STATS_FILE, data)
+    return data[key]
+
+
+async def is_community_member(bot, user_id):
+    channel_id = get_community_channel_id()
+    if not channel_id:
+        return None
+    try:
+        member = await bot.get_chat_member(chat_id=channel_id, user_id=user_id)
+        status = str(getattr(member, "status", "")).lower()
+        if status in {"member", "administrator", "creator"}:
+            return True
+        if status == "restricted" and bool(getattr(member, "is_member", False)):
+            return True
+        return False
+    except Exception as error:
+        logger.error("Error verificando membresía en Comunidad: %s", error)
+        return False
+
+
+async def show_community_gate(query):
+    text = (
+        "🌐 <b>COMUNIDAD APEXQUANT</b>\n\n"
+        "Para acceder al bot debes formar parte de la comunidad oficial de ApexQuant.\n\n"
+        "1️⃣ Pulsa <b>📢 Unirme al canal</b>.\n"
+        "2️⃣ Únete al canal oficial.\n"
+        "3️⃣ Regresa y pulsa <b>✅ Verificar acceso</b>.\n\n"
+        "⚠️ El acceso al menú principal se habilita después de verificar tu membresía."
+    )
+    keyboard = [
+        [InlineKeyboardButton("📢 Unirme al canal", url=COMMUNITY_INVITE_URL)],
+        [InlineKeyboardButton("✅ Verificar acceso", callback_data="community_verify")]
+    ]
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def show_community(query):
+    text = (
+        "🌐 <b>COMUNIDAD APEXQUANT</b>\n\n"
+        "📢 <b>Telegram</b> — canal oficial de ApexQuant.\n\n"
+        "📘 Facebook — próximamente.\n"
+        "𝕏 X (Twitter) — próximamente.\n"
+        "▶️ YouTube — próximamente.\n\n"
+        "Esta sección se actualizará con los enlaces oficiales a medida que cada red sea creada y verificada."
+    )
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("📢 Canal de Telegram", url=COMMUNITY_INVITE_URL)],
+        [InlineKeyboardButton("🔙 Volver", callback_data="back_main")]
+    ]))
+
+
+async def capture_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    post = update.channel_post
+    if not post:
+        return
+    chat = post.chat
+    save_community_channel_id(chat.id, getattr(chat, "title", ""))
+    logger.info("Canal de Comunidad detectado: %s (%s)", chat.id, getattr(chat, "title", ""))
+
+
+async def verify_community_access(query):
+    result = await is_community_member(query.get_bot(), query.from_user.id)
+    if result is True:
+        await query.edit_message_text("✅ <b>ACCESO VERIFICADO</b>\n\nTu membresía en la Comunidad ApexQuant ha sido confirmada.", parse_mode="HTML", reply_markup=main_menu(query.from_user.id))
+        return
+    if result is None:
+        await query.edit_message_text("⏳ <b>CANAL PENDIENTE DE DETECCIÓN</b>\n\nEl bot todavía no ha recibido ninguna publicación del canal oficial. El administrador debe publicar un mensaje en el canal una vez después del despliegue para que ApexQuant pueda identificarlo automáticamente.", parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("📢 Canal de Telegram", url=COMMUNITY_INVITE_URL)],
+            [InlineKeyboardButton("🔄 Verificar nuevamente", callback_data="community_verify")]
+        ]))
+        return
+    await query.edit_message_text("❌ <b>NO SE HA VERIFICADO TU MEMBRESÍA</b>\n\nÚnete al canal oficial y vuelve a pulsar <b>✅ Verificar acceso</b>.", parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
+        [InlineKeyboardButton("📢 Unirme al canal", url=COMMUNITY_INVITE_URL)],
+        [InlineKeyboardButton("🔄 Verificar acceso", callback_data="community_verify")]
+    ]))
 
 
 # ============================================================
@@ -1291,6 +1443,10 @@ async def show_reject_terms(query):
 
 
 async def show_main(query):
+    membership = await is_community_member(query.get_bot(), query.from_user.id)
+    if membership is not True:
+        await show_community_gate(query)
+        return
     text = (
         "🔥 <b>APEXQUANT</b>\n\n"
         "Bienvenido al ecosistema ApexQuant.\n\n"
@@ -1298,6 +1454,7 @@ async def show_main(query):
         "📋 CopyTrading · sigue la estrategia ApexQuant mediante OneRoyal.\n"
         "👥 Referidos · conoce el sistema IB, Sub-IB y Public Agent.\n"
         "🎓 Academia · formación de trading desde fundamentos hasta aplicación avanzada.\n"
+        "🌐 Comunidad · canal y redes oficiales de ApexQuant.\n"
         "🟢 OneRoyal · acceso al broker y registro mediante el enlace de ApexQuant.\n\n"
         "⚠️ Opera siempre bajo tu propia responsabilidad."
     )
@@ -2234,28 +2391,167 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = user.id
 
     if not has_accepted_terms(user_id):
-        text = (
-            "🔥 <b>BIENVENIDO A APEXQUANT</b>\n\n"
-            "Antes de acceder al menú principal debes leer y aceptar los términos "
-            "y advertencias de uso del ecosistema ApexQuant.\n\n"
-            "Aquí encontrarás información de mercados, CopyTrading, OneRoyal, "
-            "Academia y Referidos/IB.\n\n"
-            "⚠️ El trading y el CopyTrading implican riesgo de pérdida de capital."
+        membership = await is_community_member(context.bot, user_id)
+    if membership is not True:
+        await update.message.reply_text(
+            "🔥 <b>APEXQUANT</b>\n\n"
+            "Tus términos ya están aceptados. Antes de acceder al menú principal debes unirte a la Comunidad oficial de ApexQuant.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌐 Comunidad", callback_data="community_gate")]])
         )
-        await update.message.reply_text(text, parse_mode="HTML", reply_markup=welcome_keyboard())
         return
 
     text = (
         "🔥 <b>Bienvenido a ApexQuant</b>\n\n"
         "Centro de información, formación y herramientas relacionadas con los mercados financieros.\n\n"
         "📊 <b>Mercados</b> — calendario económico y eventos relevantes.\n"
-        "📋 <b>CopyTrading</b> — acceso a la oferta ApexQuant en OneRoyal.\n"
+        "📋 <b>CopyTrading</b> — acceso a la oferta ApexQuant en OneRoyal.\n"        "\n"
         "👥 <b>Referidos</b> — guía de IB, Sub-IB y Public Agent.\n"
         "🎓 <b>Academia</b> — formación progresiva de trading.\n"
+        "🌐 <b>Comunidad</b> — canal y redes oficiales de ApexQuant.\n"
         "🟢 <b>OneRoyal</b> — broker y registro mediante ApexQuant.\n\n"
         "⚠️ <b>Aviso de riesgo:</b> ningún contenido de ApexQuant garantiza resultados financieros."
     )
     await update.message.reply_text(text, parse_mode="HTML", reply_markup=main_menu(user_id))
+
+
+
+# ============================================================
+# ADMINISTRACIÓN — COMUNIDAD
+# ============================================================
+
+def admin_menu_keyboard():
+    count = community_post_count()
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton(f"📝 Publicar texto ({count}/{COMMUNITY_DAILY_TARGET})", callback_data="admin_community_text")],
+        [InlineKeyboardButton("🖼️ Publicar imagen", callback_data="admin_community_photo")],
+        [InlineKeyboardButton("🎓 Publicar Academia", callback_data="admin_community_academy")],
+        [InlineKeyboardButton("📊 Estado de publicaciones", callback_data="admin_community_stats")],
+        [InlineKeyboardButton("🔙 Volver", callback_data="back_main")]
+    ])
+
+
+async def show_admin_menu(query):
+    if not is_admin(query.from_user.id):
+        await query.answer("⛔ Acceso restringido.", show_alert=True)
+        return
+    channel_status = "🟢 Canal conectado" if get_community_channel_id() else "🟡 Canal pendiente de detección"
+    text = ("🛠️ <b>ADMINISTRACIÓN — COMUNIDAD</b>\n\n" f"{channel_status}\n" f"📅 Publicaciones manuales hoy: <b>{community_post_count()}/{COMMUNITY_DAILY_TARGET}</b>\n\n" "📢 Desde aquí puedes mantener activa la Comunidad con publicaciones manuales.\n\n" "🚨 Las alertas automáticas de alto impacto funcionan por separado y no consumen el objetivo de 3 publicaciones manuales.")
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=admin_menu_keyboard())
+
+
+async def admin_send_text_prompt(query, context):
+    if not is_admin(query.from_user.id): return
+    context.user_data["admin_action"] = "community_text"
+    await query.edit_message_text("📝 <b>NUEVA PUBLICACIÓN</b>\n\nEscribe ahora el texto que quieres publicar en el canal.\n\nPuedes utilizar emojis y HTML básico.\n\n❌ /cancelar para cancelar.", parse_mode="HTML")
+
+
+async def admin_send_photo_prompt(query, context):
+    if not is_admin(query.from_user.id): return
+    context.user_data["admin_action"] = "community_photo"
+    await query.edit_message_text("🖼️ <b>PUBLICAR IMAGEN</b>\n\nEnvíame ahora la imagen desde este chat. Puedes incluir la descripción como caption.\n\n❌ /cancelar para cancelar.", parse_mode="HTML")
+
+
+async def admin_academy_menu(query):
+    if not is_admin(query.from_user.id): return
+    buttons=[]
+    for module_id,module in ACADEMY_MODULES.items():
+        buttons.append([InlineKeyboardButton(module["title"], callback_data=f"admin_academy_{module_id}")])
+    buttons.append([InlineKeyboardButton("🔙 Administración", callback_data="admin_menu")])
+    await query.edit_message_text("🎓 <b>PUBLICAR ACADEMIA</b>\n\nSelecciona el módulo que quieres publicar.", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(buttons))
+
+
+async def publish_academy_module(context, module_id):
+    channel_id=get_community_channel_id(); module=ACADEMY_MODULES.get(module_id)
+    if not channel_id or not module: return False
+    text=f"🎓 <b>{module['title']}</b>\n\n{module['text']}\n\n⚠️ <b>Contenido educativo:</b> estudiar una metodología no garantiza resultados futuros."
+    chunks=[]
+    while len(text)>3900:
+        cut=text.rfind("\n",0,3900)
+        if cut<1000: cut=3900
+        chunks.append(text[:cut]); text=text[cut:].lstrip()
+    if text: chunks.append(text)
+    for chunk in chunks:
+        await context.bot.send_message(chat_id=channel_id,text=chunk,parse_mode="HTML")
+    register_community_post(); return True
+
+
+async def admin_publish_academy(query, context, module_id):
+    if not is_admin(query.from_user.id): return
+    ok=await publish_academy_module(context,module_id)
+    if ok:
+        await query.edit_message_text("✅ <b>Contenido de Academia publicado.</b>\n\n" f"📅 Publicaciones manuales hoy: {community_post_count()}/{COMMUNITY_DAILY_TARGET}",parse_mode="HTML",reply_markup=admin_menu_keyboard())
+    else:
+        await query.edit_message_text("⚠️ No se pudo publicar. Verifica que el canal esté detectado y que el bot sea administrador.",parse_mode="HTML",reply_markup=admin_menu_keyboard())
+
+
+async def admin_stats(query):
+    if not is_admin(query.from_user.id): return
+    await query.edit_message_text("📊 <b>ESTADO DE COMUNIDAD</b>\n\n" f"📅 Publicaciones manuales hoy: <b>{community_post_count()}/{COMMUNITY_DAILY_TARGET}</b>\n" f"📢 Canal: <code>{get_community_channel_id() or 'Pendiente de detección'}</code>\n\n" "🚨 Las alertas automáticas de alto impacto son independientes.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Administración",callback_data="admin_menu")]]))
+
+
+async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.effective_user or not is_admin(update.effective_user.id): return
+    context.user_data.pop("admin_action",None)
+    await update.message.reply_text("❌ Publicación cancelada.",reply_markup=admin_menu_keyboard())
+
+
+async def admin_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.channel_post or not update.message or not update.effective_user or not is_admin(update.effective_user.id): return
+    if context.user_data.get("admin_action") != "community_text": return
+    channel_id=get_community_channel_id()
+    if not channel_id:
+        context.user_data.pop("admin_action",None)
+        await update.message.reply_text("⚠️ El canal todavía no ha sido detectado. Publica un mensaje en el canal oficial una vez y vuelve a intentarlo.",reply_markup=admin_menu_keyboard()); return
+    await context.bot.send_message(chat_id=channel_id,text=update.message.text,parse_mode="HTML")
+    count=register_community_post(); context.user_data.pop("admin_action",None)
+    await update.message.reply_text(f"✅ Publicación enviada.\n\n📅 Publicaciones manuales hoy: {count}/{COMMUNITY_DAILY_TARGET}",reply_markup=admin_menu_keyboard())
+
+
+async def admin_photo_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.channel_post or not update.message or not update.effective_user or not is_admin(update.effective_user.id): return
+    if context.user_data.get("admin_action") != "community_photo": return
+    channel_id=get_community_channel_id()
+    if not channel_id:
+        context.user_data.pop("admin_action",None)
+        await update.message.reply_text("⚠️ El canal todavía no ha sido detectado. Publica un mensaje en el canal oficial una vez y vuelve a intentarlo.",reply_markup=admin_menu_keyboard()); return
+    await context.bot.send_photo(chat_id=channel_id,photo=update.message.photo[-1].file_id,caption=update.message.caption or "",parse_mode="HTML")
+    count=register_community_post(); context.user_data.pop("admin_action",None)
+    await update.message.reply_text(f"✅ Imagen publicada.\n\n📅 Publicaciones manuales hoy: {count}/{COMMUNITY_DAILY_TARGET}",reply_markup=admin_menu_keyboard())
+
+
+async def community_high_impact_monitor(application):
+    while True:
+        try:
+            channel_id=get_community_channel_id()
+            if channel_id:
+                today=date.today(); events=await fetch_calendar_events(today,today)
+                seen=_load_json_file(COMMUNITY_EVENTS_FILE,{})
+                now=datetime.now(timezone.utc); changed=False
+                for event in events or []:
+                    if str(event_value(event,"impact","importance")).lower()!="high": continue
+                    name=str(event_value(event,"name","title","event") or "Evento económico")
+                    currency=str(event_value(event,"currency","country","ccy") or "N/D").upper()
+                    raw_dt=event_value(event,"time_utc","datetime","date")
+                    if not raw_dt: continue
+                    try:
+                        dt=datetime.fromisoformat(str(raw_dt).strip().replace("Z","+00:00"))
+                    except ValueError: continue
+                    if dt.tzinfo is None: dt=dt.replace(tzinfo=timezone.utc)
+                    dt=dt.astimezone(timezone.utc)
+                    minutes=(dt-now).total_seconds()/60
+                    if minutes < -5 or minutes > 30: continue
+                    key=str(event_value(event,"id","event_id") or f"{name}|{currency}|{raw_dt}")
+                    if key in seen: continue
+                    message=("🚨 <b>EVENTO ECONÓMICO DE ALTO IMPACTO</b>\n\n" f"🔴 <b>{escape(currency)}</b>\n" f"📰 {escape(name)}\n" f"🕒 {dt.strftime('%Y-%m-%d %H:%M UTC')}\n\n" "⚠️ Este evento puede generar volatilidad elevada y movimientos bruscos.\n\n" "🛡️ Gestiona tu riesgo y considera el contexto económico.\n\n" "ApexQuant — información de mercado, no una señal de entrada.")
+                    await application.bot.send_message(chat_id=channel_id,text=message,parse_mode="HTML")
+                    seen[key]=datetime.utcnow().isoformat()+"Z"; changed=True
+                if changed:
+                    for old_key in list(seen)[:-500]: seen.pop(old_key,None)
+                    _save_json_file(COMMUNITY_EVENTS_FILE,seen)
+        except asyncio.CancelledError: raise
+        except Exception as error: logger.error("Error en monitor de alto impacto: %s",error,exc_info=True)
+        await asyncio.sleep(HIGH_IMPACT_CHECK_SECONDS)
 
 
 # ============================================================
@@ -2277,7 +2573,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         if data == "accept_terms":
             if register_terms_acceptance(user_id):
-                await show_main(query)
+                await show_community_gate(query)
             else:
                 await query.edit_message_text(
                     "⚠️ No se pudo guardar tu aceptación. Inténtalo nuevamente.",
@@ -2293,6 +2589,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await show_terms(query)
             return
 
+        if data == "community_gate":
+            await show_community_gate(query)
+            return
+        if data == "community_verify":
+            await verify_community_access(query)
+            return
+        if data == "community":
+            await show_community(query)
+            return
         if data == "back_main":
             await show_main(query)
             return
@@ -2359,6 +2664,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data == "settings":
             await show_settings(query)
             return
+        if data == "admin_menu":
+            await show_admin_menu(query)
+            return
+        if data == "admin_community_text":
+            await admin_send_text_prompt(query, context)
+            return
+        if data == "admin_community_photo":
+            await admin_send_photo_prompt(query, context)
+            return
+        if data == "admin_community_academy":
+            await admin_academy_menu(query)
+            return
+        if data.startswith("admin_academy_"):
+            await admin_publish_academy(query, context, data.replace("admin_academy_", "", 1))
+            return
+        if data == "admin_community_stats":
+            await admin_stats(query)
+            return
         if data == "academy":
             await show_academy(query)
             return
@@ -2405,13 +2728,22 @@ async def error_handler(
 # MAIN
 # ============================================================
 
+async def post_init(application):
+    application.create_task(community_high_impact_monitor(application), name="apexquant_high_impact_monitor")
+    logger.info("🚨 Monitor de eventos de alto impacto iniciado.")
+
+
 def main():
     if not BOT_TOKEN:
         raise RuntimeError("❌ BOT_TOKEN no está configurado.")
 
-    application = Application.builder().token(BOT_TOKEN).build()
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CallbackQueryHandler(button_handler))
+    application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
+    application.add_handler(CommandHandler("start", start), group=0)
+    application.add_handler(CommandHandler("cancelar", admin_cancel), group=0)
+    application.add_handler(CallbackQueryHandler(button_handler), group=0)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text_input), group=0)
+    application.add_handler(MessageHandler(filters.PHOTO, admin_photo_input), group=0)
+    application.add_handler(MessageHandler(filters.ALL, capture_channel_post), group=1)
     application.add_error_handler(error_handler)
 
     logger.info("🔥 Apex Quant Bot iniciado correctamente.")
