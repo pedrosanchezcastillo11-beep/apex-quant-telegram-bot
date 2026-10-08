@@ -59,10 +59,13 @@ ASSISTANT_MAX_OUTPUT = 1800
 # ONEROYAL
 # ============================================================
 
-ONEROYAL_IB_URL = os.getenv("ONEROYAL_IB_URL", "").strip()
+ONEROYAL_IB_URL = os.getenv("ONEROYAL_IB_LINK", os.getenv("ONEROYAL_IB_URL", "")).strip()
 ONEROYAL_COPYTRADING_URL = os.getenv(
-    "ONEROYAL_COPYTRADING_URL",
-    "https://socialtrading.oneroyal.com/portal/registration/subscription/82924/ApexQuant95"
+    "ONEROYAL_COPYTRADING_LINK",
+    os.getenv(
+        "ONEROYAL_COPYTRADING_URL",
+        "https://socialtrading.oneroyal.com/portal/registration/subscription/82924/ApexQuant95"
+    )
 ).strip()
 
 # Oferta de CopyTrading de ApexQuant. El enlace completo es la referencia
@@ -1994,41 +1997,34 @@ async def show_main(query):
 async def show_referrals(query):
     text = (
         "👥 <b>REFERIDOS — ECOSISTEMA ONEROYAL</b>\n\n"
-        "ApexQuant no utiliza un sistema propio para calcular o pagar comisiones "
-        "de referidos. El objetivo es que la estructura de referidos se gestione "
-        "mediante las herramientas oficiales de OneRoyal.\n\n"
-        "🏦 <b>1. Regístrate con OneRoyal mediante ApexQuant</b>\n"
-        "Utiliza el botón de registro de OneRoyal dentro de ApexQuant para que tu "
-        "cuenta quede asociada al enlace IB de ApexQuant.\n\n"
-        "🪪 <b>2. Completa la verificación</b>\n"
-        "Finaliza el proceso de registro y las verificaciones que OneRoyal solicite.\n\n"
-        "🤝 <b>3. Solicita ser IB / Sub-IB</b>\n"
-        "Desde el Client Portal de OneRoyal, entra en el área IB y solicita la "
-        "activación correspondiente. La aprobación y condiciones dependen de OneRoyal.\n\n"
-        "🔗 <b>4. Obtén tu enlace</b>\n"
-        "Una vez aprobado, OneRoyal proporciona las herramientas y enlaces que "
-        "correspondan para que puedas invitar a nuevos clientes.\n\n"
-        "📣 <b>5. Invita a tus referidos</b>\n"
-        "Comparte tu enlace de OneRoyal con las personas que quieras incorporar. "
-        "Indícales que deben registrarse utilizando el enlace correcto para que OneRoyal "
-        "pueda atribuir la relación.\n\n"
-        "💵 <b>6. ¿Cómo se generan las comisiones?</b>\n"
-        "OneRoyal calcula las comisiones/rebates según el acuerdo IB o Sub-IB aprobado "
-        "y la actividad de los clientes referidos. Las tasas dependen del acuerdo y "
-        "configuración aplicables; ApexQuant no debe presentar una tasa como garantizada.\n\n"
+        "ApexQuant trabaja la estructura de referidos mediante OneRoyal. "
+        "Las comisiones/rebates, atribución y condiciones dependen del acuerdo "
+        "y de la configuración aprobada por OneRoyal.\n\n"
+        "🏦 <b>1. Registro con OneRoyal</b>\n"
+        "Si quieres registrarte como cliente de OneRoyal mediante ApexQuant, utiliza "
+        "el enlace de registro de ApexQuant para que la relación quede atribuida "
+        "correctamente.\n\n"
+        "🔗 <b>2. ¿Quieres tu propio enlace Sub-IB?</b>\n"
+        "No necesitas buscar ni crear el enlace por tu cuenta. El manager de OneRoyal "
+        "confirmó a ApexQuant que ApexQuant puede crear enlaces para sus Sub-IB y "
+        "puede crear todos los enlaces que necesite.\n\n"
+        "📩 <b>3. Solicítalo directamente a ApexQuant</b>\n"
+        "Si quieres un enlace Sub-IB o un enlace de referido gestionado por ApexQuant, "
+        "pulsa <b>Solicitar enlace al equipo ApexQuant</b> y contacta directamente "
+        "con el administrador. No te enviaremos un enlace inventado: el enlace real "
+        "se crea y se entrega desde la gestión de ApexQuant.\n\n"
+        "💵 <b>4. Comisiones</b>\n"
+        "OneRoyal calcula las comisiones/rebates según el acuerdo IB o Sub-IB y la "
+        "actividad correspondiente. No se debe asumir una tasa concreta sin confirmar "
+        "el acuerdo aplicable.\n\n"
         "📈 <b>PUBLIC AGENT PARA COPYTRADING</b>\n"
-        "Si OneRoyal habilita la función Public Agent para una oferta, el agente puede "
-        "referir seguidores a esa oferta. Durante la suscripción, el seguidor debe "
-        "introducir el número de cuenta MT del agente cuando la plataforma lo solicite. "
-        "OneRoyal atribuye y distribuye la parte de las comisiones de la oferta que "
-        "corresponda al agente.\n\n"
-        "🔥 <b>¿Qué significa esto para ApexQuant?</b>\n"
-        "La infraestructura de IB/Sub-IB y Public Agent queda en OneRoyal. ApexQuant "
-        "no necesita mantener un sistema propio de porcentajes, saldos, pagos o retiros "
-        "de referidos.\n\n"
-        "⚠️ <b>Importante:</b> ser referido, IB, Sub-IB o Public Agent está sujeto a "
-        "aprobación, disponibilidad regional, términos y condiciones de OneRoyal. "
-        "No todos los países o usuarios pueden ser elegibles."
+        "Public Agent es diferente de Sub-IB: corresponde a ofertas de CopyTrading. "
+        "Cuando una oferta habilita esta función, el agente puede recibir la parte de "
+        "las fees que corresponda según la configuración de la oferta. El seguidor "
+        "puede tener que introducir el número de cuenta MT del agente durante la "
+        "suscripción.\n\n"
+        "⚠️ <b>Importante:</b> la disponibilidad de IB, Sub-IB y Public Agent depende "
+        "de aprobación, jurisdicción, términos y configuración de OneRoyal."
     )
     keyboard = []
     if ONEROYAL_IB_URL:
@@ -2036,14 +2032,13 @@ async def show_referrals(query):
     if ADMIN_TELEGRAM_ID:
         keyboard.append([
             InlineKeyboardButton(
-                "📩 Solicitar enlace al equipo ApexQuant",
+                "📩 Solicitar enlace Sub-IB / referido",
                 url=f"tg://user?id={ADMIN_TELEGRAM_ID}"
             )
         ])
     keyboard.append([InlineKeyboardButton("📋 Ver CopyTrading ApexQuant", callback_data="copytrading")])
     keyboard.append([InlineKeyboardButton("🔙 Volver", callback_data="back_main")])
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
-
 
 # ============================================================
 # IDIOMA
@@ -3140,12 +3135,20 @@ ONEROYAL — REFERIDOS, IB, SUB-IB Y PUBLIC AGENT
 La información oficial consultada indica que los IB pueden usar enlaces
 personalizados, seguir clientes y comisiones mediante herramientas del portal,
 y que existe una estructura Master IB/Sub-IB sujeta a aprobación y condiciones.
-Los enlaces concretos de Sub-IB/campañas deben salir de las herramientas de
-OneRoyal. El manager de OneRoyal de ApexQuant confirmó a la administración de
-ApexQuant que puede crear los enlaces para sus Sub-IB y que puede crear todos
-los enlaces que necesite. Si un usuario pide un enlace específico de ApexQuant,
-no inventes uno: indícale que debe solicitarlo al equipo/administrador de
-ApexQuant.
+IMPORTANTE PARA APEXQUANT: el manager de OneRoyal de ApexQuant confirmó que
+ApexQuant puede crear los enlaces para sus Sub-IB y puede crear todos los enlaces
+que necesite. Por eso, si un usuario quiere un enlace Sub-IB o un enlace de
+referido generado por ApexQuant, NO le digas que debe solicitarlo directamente
+a OneRoyal: indícale que debe solicitarlo al equipo/administrador de ApexQuant
+mediante el botón de contacto disponible en Referidos. No inventes ni fabriques
+URLs de Sub-IB. El administrador de ApexQuant es quien gestiona la creación y
+entrega del enlace correspondiente.
+
+DIFERENCIA IMPORTANTE: Sub-IB pertenece a la estructura de partners/IB de
+OneRoyal y recibe su propio enlace de referidos cuando ApexQuant lo crea para él.
+Public Agent corresponde a ofertas de CopyTrading; cuando está habilitado, el
+seguidor puede necesitar introducir el número de cuenta MT del agente y las
+comisiones dependen de la configuración de la oferta.
 Nunca prometas una tasa de comisión concreta si no está confirmada para esa
 campaña o acuerdo.
 Cuando Public Agent está habilitado para una oferta, OneRoyal indica que el
@@ -3313,8 +3316,13 @@ async def show_assistant(query, context):
 async def assistant_reset(query, context):
     context.user_data["assistant_history"] = []
     context.user_data["apex_assistant_active"] = True
+    text = "🧹 <b>NUEVA CONVERSACIÓN</b>\n\nListo. ¿Qué quieres consultar?"
+    current_text = query.message.text if query.message else ""
+    # button_handler ya responde al callback; aquí solo editamos si realmente cambió.
+    if current_text == "🧹 NUEVA CONVERSACIÓN\n\nListo. ¿Qué quieres consultar?":
+        return
     await query.edit_message_text(
-        "🧹 <b>NUEVA CONVERSACIÓN</b>\n\nListo. ¿Qué quieres consultar?",
+        text,
         parse_mode="HTML",
         reply_markup=assistant_keyboard()
     )
