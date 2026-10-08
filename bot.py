@@ -51,12 +51,17 @@ CONSENTS_FILE = os.getenv("CONSENTS_FILE", "/data/consents.json").strip()
 # Gemma 4 genera la respuesta final. Gemini se conserva únicamente
 # como motor de búsqueda web cuando la pregunta necesita información reciente.
 # Esto permite usar Gemma 4 sin perder la función de búsqueda web existente.
-GEMMA_API_KEY = os.getenv("GEMMA_API_KEY", os.getenv("GEMINI_API_KEY", "")).strip()
+def _clean_key(value):
+    """Limpia espacios y comillas (rectas o curvas) que se cuelan al pegar la key en Deployka."""
+    return (value or "").strip().strip('"').strip("'").strip("\u201d").strip("\u201c").strip()
+
+GEMMA_API_KEY = _clean_key(os.getenv("GEMMA_API_KEY") or os.getenv("GEMINI_API_KEY"))
+logger.info("GEMMA key cargada: len=%s, inicio=%s", len(GEMMA_API_KEY), GEMMA_API_KEY[:3])
 GEMMA_MODEL = os.getenv("GEMMA_MODEL", "gemma-4-26b-a4b-it").strip()
 GEMMA_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 # Búsqueda web opcional mediante Gemini. Puede utilizar la misma API key.
-GEMINI_SEARCH_API_KEY = os.getenv("GEMINI_SEARCH_API_KEY", os.getenv("GEMINI_API_KEY", "")).strip()
+GEMINI_SEARCH_API_KEY = _clean_key(os.getenv("GEMINI_SEARCH_API_KEY") or os.getenv("GEMINI_API_KEY"))
 GEMINI_SEARCH_MODEL = os.getenv("GEMINI_SEARCH_MODEL", "gemini-2.5-flash").strip()
 GEMINI_WEB_SEARCH = os.getenv("GEMINI_WEB_SEARCH", "true").strip().lower() in {"1", "true", "yes", "on"}
 
