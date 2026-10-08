@@ -3242,14 +3242,40 @@ def assistant_extract_output(data):
 
 def assistant_gemini_contents(history, question):
     contents = []
+
     for item in (history or [])[-ASSISTANT_MAX_HISTORY:]:
         if not isinstance(item, dict):
             continue
-        role = "model" if item.get("role") in {"assistant", "model"} else "user"
+
+        role_value = item.get("role")
         content = str(item.get("content", "")).strip()
-        if content:
-            contents.append({"role": role, "parts": [{"text": content}]})
-    contents.append({"role": "user", "parts": [{"text": str(question)}]})
+
+        if not content:
+            continue
+
+        if role_value in {"assistant", "model"}:
+            role = "model"
+        else:
+            role = "user"
+
+        contents.append({
+            "role": role,
+            "parts": [
+                {
+                    "text": content
+                }
+            ]
+        })
+
+    contents.append({
+        "role": "user",
+        "parts": [
+            {
+                "text": str(question)
+            }
+        ]
+    })
+
     return contents
 
 async def assistant_web_search_context(question):
@@ -3331,14 +3357,23 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
             "no inventes datos que no aparezcan aquí:\n" + web_context
         )
 
-    payload = {
+        payload = {
         "systemInstruction": {
-            "parts": [{"text": instructions}]
+            "parts": [
+                {
+                    "text": instructions
+                }
+            ]
         },
         "contents": assistant_gemini_contents(history, question),
         "generationConfig": {
             "maxOutputTokens": ASSISTANT_MAX_OUTPUT,
-            "temperature": 0.4
+            "temperature": 1.0,
+            "topP": 0.95,
+            "topK": 64,
+            "thinkingConfig": {
+                "thinkingLevel": "minimal"
+            }
         }
     }
 
@@ -3385,8 +3420,8 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
         if "HTTP 400" in error_text:
             return (
                 "⚠️ <b>Gemma 4 rechazó la solicitud.</b>\n\n"
-                "La API recibió la clave, pero la configuración de la petición no es válida. "
-                "Revisaremos el modelo y el formato enviado."
+                "La API recibió la clave, pero rechazó el formato o algún parámetro de la petición.\n\n"
+                "El administrador puede revisar los detalles en los Logs de Deployka."
             )
         if "HTTP 401" in error_text or "HTTP 403" in error_text:
             return (
