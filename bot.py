@@ -45,6 +45,17 @@ ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID", "").strip()
 CONSENTS_FILE = os.getenv("CONSENTS_FILE", "/data/consents.json").strip()
 
 # ============================================================
+# ASISTENTE IA APEXQUANT — FASE 2
+# ============================================================
+# Usa urllib para evitar añadir una dependencia pesada al Nano.
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+GEMINI_WEB_SEARCH = os.getenv("GEMINI_WEB_SEARCH", "true").strip().lower() in {"1", "true", "yes", "on"}
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+ASSISTANT_MAX_HISTORY = 8
+ASSISTANT_MAX_OUTPUT = 1800
+
+# ============================================================
 # ONEROYAL
 # ============================================================
 
@@ -110,6 +121,9 @@ def main_menu(user_id=None):
         ],
         [
             InlineKeyboardButton("🌐 Comunidad", callback_data="community")
+        ],
+        [
+            InlineKeyboardButton("🤖 Asistente ApexQuant", callback_data="assistant")
         ],
         [
             InlineKeyboardButton("🟢 Broker OneRoyal", callback_data="broker_oneroyal")
@@ -931,7 +945,7 @@ def event_currency(event):
         (("US ", "U.S.", "UNITED STATES", "AMERICAN", "FED", "FOMC",
           "FEDERAL RESERVE", "JOBLESS CLAIM", "NON-FARM", "NONFARM",
           "PAYROLL", "ADP EMPLOYMENT", "ISM ", "US CPI", "US GDP",
-          "US RETAIL"), "USD"),
+          "US RETAIL", "BEIGE BOOK"), "USD"),
         (("EUROZONE", "EURO AREA", "EUROPEAN CENTRAL BANK", "ECB",
           "EUROPEAN", "GERMANY", "FRANCE", "ITALY", "SPAIN"), "EUR"),
         (("UK ", "U.K.", "UNITED KINGDOM", "BRITAIN", "BOE",
@@ -1966,6 +1980,7 @@ async def show_main(query):
         "👥 Referidos · conoce el sistema IB, Sub-IB y Public Agent.\n"
         "🎓 Academia · formación de trading desde fundamentos hasta aplicación avanzada.\n"
         "🌐 Comunidad · canal y redes oficiales de ApexQuant.\n"
+        "🤖 Asistente · información inteligente sobre el ecosistema y los mercados.\n"
         "🟢 OneRoyal · acceso al broker y registro mediante el enlace de ApexQuant.\n\n"
         "⚠️ Opera siempre bajo tu propia responsabilidad."
     )
@@ -2018,6 +2033,13 @@ async def show_referrals(query):
     keyboard = []
     if ONEROYAL_IB_URL:
         keyboard.append([InlineKeyboardButton("🏦 Registrarme con OneRoyal", url=ONEROYAL_IB_URL)])
+    if ADMIN_TELEGRAM_ID:
+        keyboard.append([
+            InlineKeyboardButton(
+                "📩 Solicitar enlace al equipo ApexQuant",
+                url=f"tg://user?id={ADMIN_TELEGRAM_ID}"
+            )
+        ])
     keyboard.append([InlineKeyboardButton("📋 Ver CopyTrading ApexQuant", callback_data="copytrading")])
     keyboard.append([InlineKeyboardButton("🔙 Volver", callback_data="back_main")])
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
@@ -3061,7 +3083,7 @@ async def community_high_impact_monitor(application):
                 for event in events or []:
                     if str(event_value(event,"impact","importance")).lower()!="high": continue
                     name=str(event_value(event,"name","title","event") or "Evento económico")
-                    currency=str(event_value(event,"currency","country","ccy") or "N/D").upper()
+                    currency=event_currency(event).upper() or "N/D"
                     raw_dt=event_value(event,"time_utc","datetime","date")
                     if not raw_dt: continue
                     try:
@@ -3083,6 +3105,252 @@ async def community_high_impact_monitor(application):
         except Exception as error: logger.error("Error en monitor de alto impacto: %s",error,exc_info=True)
         await asyncio.sleep(HIGH_IMPACT_CHECK_SECONDS)
 
+
+
+# ============================================================
+# ASISTENTE APEXQUANT — FASE 2
+# ============================================================
+
+APEXQUANT_ASSISTANT_INSTRUCTIONS = """
+Eres el Asistente ApexQuant, el asistente oficial del ecosistema ApexQuant.
+Responde principalmente en español, salvo que el usuario escriba claramente
+en otro idioma.
+
+MISIÓN
+- Explicar el ecosistema ApexQuant: Mercados, calendario económico, Academia,
+  CopyTrading, OneRoyal, Referidos, IB, Sub-IB, Public Agent y Comunidad.
+- Ayudar con trading, Forex, índices, materias primas, criptomonedas,
+  macroeconomía, análisis técnico, fundamental e institucional.
+- Explicar conceptos de la Academia con claridad y ejemplos educativos.
+- Para información actual, usar búsqueda web cuando esté habilitada.
+- No inventar enlaces, porcentajes, condiciones de OneRoyal, disponibilidad
+  regional ni datos de mercado.
+
+APEXQUANT
+ApexQuant es un ecosistema de información, educación y herramientas relacionadas
+con mercados financieros. La Academia cubre desde fundamentos hasta estructura,
+liquidez, BOS, CHOCH, FVG, Order Blocks, Premium/Discount, análisis
+multitemporal y flujo de análisis.
+El calendario económico utiliza FinanceCalendar y puede complementarse con web.
+ApexQuant integra OneRoyal para registro y CopyTrading mediante sus enlaces.
+El CopyTrading no garantiza beneficios y sus condiciones las determina OneRoyal.
+ApexQuant no custodia fondos ni controla cuentas de broker.
+
+ONEROYAL — REFERIDOS, IB, SUB-IB Y PUBLIC AGENT
+La información oficial consultada indica que los IB pueden usar enlaces
+personalizados, seguir clientes y comisiones mediante herramientas del portal,
+y que existe una estructura Master IB/Sub-IB sujeta a aprobación y condiciones.
+Los enlaces concretos de Sub-IB/campañas deben salir de las herramientas de
+OneRoyal. El manager de OneRoyal de ApexQuant confirmó a la administración de
+ApexQuant que puede crear los enlaces para sus Sub-IB y que puede crear todos
+los enlaces que necesite. Si un usuario pide un enlace específico de ApexQuant,
+no inventes uno: indícale que debe solicitarlo al equipo/administrador de
+ApexQuant.
+Nunca prometas una tasa de comisión concreta si no está confirmada para esa
+campaña o acuerdo.
+Cuando Public Agent está habilitado para una oferta, OneRoyal indica que el
+agente puede recibir una parte de las fees de la oferta, incluyendo performance,
+management o registration fees, y que el seguidor debe introducir el número de
+cuenta MT del agente durante la suscripción. Depende de la oferta y configuración.
+
+TRADING Y PROYECCIONES
+Si preguntan si un activo subirá/bajará, por una entrada, compra/venta, señal o
+proyección:
+- Nunca presentes una predicción como certeza ni prometas resultados.
+- Puedes ofrecer escenarios alcista, bajista y neutral, con condiciones de
+  confirmación e invalidación.
+- Puedes analizar estructura, liquidez, volatilidad, catalizadores y riesgo si
+  hay datos actuales suficientes.
+- Valida siempre precio y contexto actual antes de una decisión.
+- No sustituyas asesoramiento financiero personalizado.
+
+ACTUALIDAD
+Para noticias, eventos, datos macro, condiciones de mercado, OneRoyal, precios
+o cualquier dato cambiante, usa web si está habilitada. Si no puedes verificar
+algo, dilo claramente.
+
+ESTILO
+Sé útil, directo y profesional. Usa secciones cortas y emojis con moderación.
+Incluye una advertencia clara cuando la pregunta implique una decisión financiera.
+"""
+
+def assistant_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🧹 Nueva conversación", callback_data="assistant_reset")],
+        [InlineKeyboardButton("👥 Referidos / enlaces OneRoyal", callback_data="referrals")],
+        [InlineKeyboardButton("📅 Calendario económico", callback_data="calendar")],
+        [InlineKeyboardButton("🎓 Academia", callback_data="academy")],
+        [InlineKeyboardButton("🔙 Volver", callback_data="back_main")]
+    ])
+
+def assistant_relevant_calendar(question):
+    q = str(question or "").lower()
+    return any(k in q for k in (
+        "calendario", "evento", "eventos", "cpi", "ppi", "nfp", "fomc",
+        "fed", "beige book", "jobless", "desempleo", "inflación", "gdp",
+        "pib", "ventas minoristas", "tipo de interés", "interest rate",
+        "macro", "mañana", "hoy", "esta semana"
+    ))
+
+async def assistant_calendar_context(question):
+    if not assistant_relevant_calendar(question):
+        return ""
+    try:
+        events = await fetch_calendar_events(today_date(), tomorrow_date())
+        rows = []
+        for event in events or []:
+            if not isinstance(event, dict):
+                continue
+            name = str(event_value(event, "name", "title", "event") or "")
+            if not name:
+                continue
+            currency = event_currency(event) or "N/D"
+            impact = str(event_value(event, "impact", "importance") or "N/D")
+            dt = str(event_value(event, "time_utc", "datetime", "date") or "")
+            rows.append(f"- {dt} | {impact.upper()} | {currency} | {name}")
+            if len(rows) >= 12:
+                break
+        return "\n\nCALENDARIO APEXQUANT:\n" + "\n".join(rows) if rows else ""
+    except Exception as error:
+        logger.warning("No se pudo adjuntar calendario al asistente: %s", error)
+        return ""
+
+def assistant_extract_output(data):
+    pieces = []
+    try:
+        candidates = data.get("candidates", []) if isinstance(data, dict) else []
+        for candidate in candidates:
+            content = candidate.get("content", {}) if isinstance(candidate, dict) else {}
+            for part in content.get("parts", []) or []:
+                if isinstance(part, dict) and part.get("text"):
+                    pieces.append(str(part["text"]))
+    except Exception:
+        pass
+    return "\n".join(pieces).strip()
+
+def assistant_gemini_contents(history, question):
+    contents = []
+    for item in (history or [])[-ASSISTANT_MAX_HISTORY:]:
+        if not isinstance(item, dict):
+            continue
+        role = "model" if item.get("role") in {"assistant", "model"} else "user"
+        content = str(item.get("content", "")).strip()
+        if content:
+            contents.append({"role": role, "parts": [{"text": content}]})
+    contents.append({"role": "user", "parts": [{"text": str(question)}]})
+    return contents
+
+async def call_apexquant_assistant(question, history, calendar_context=""):
+    if not GEMINI_API_KEY:
+        return (
+            "⚠️ <b>Asistente ApexQuant</b>\n\n"
+            "El asistente IA todavía no está conectado.\n\n"
+            "Configura <code>GEMINI_API_KEY</code> en Deployka."
+        )
+
+    instructions = APEXQUANT_ASSISTANT_INSTRUCTIONS
+    if calendar_context:
+        instructions += calendar_context
+
+    payload = {
+        "systemInstruction": {
+            "parts": [{"text": instructions}]
+        },
+        "contents": assistant_gemini_contents(history, question),
+        "generationConfig": {
+            "maxOutputTokens": ASSISTANT_MAX_OUTPUT,
+            "temperature": 0.4
+        }
+    }
+    if GEMINI_WEB_SEARCH:
+        payload["tools"] = [{"google_search": {}}]
+
+    def request_gemini():
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        request = Request(
+            GEMINI_API_URL.format(model=GEMINI_MODEL),
+            data=body,
+            method="POST",
+            headers={
+                "x-goog-api-key": GEMINI_API_KEY,
+                "Content-Type": "application/json"
+            }
+        )
+        with urlopen(request, timeout=45) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    try:
+        loop = asyncio.get_running_loop()
+        data = await loop.run_in_executor(None, request_gemini)
+        answer = assistant_extract_output(data)
+        return answer or "⚠️ No pude generar una respuesta en este momento."
+    except Exception as error:
+        logger.error("Error en Asistente ApexQuant: %s", error, exc_info=True)
+        return (
+            "⚠️ <b>No pude consultar el asistente.</b>\n\n"
+            "Revisa <code>GEMINI_API_KEY</code>, el modelo configurado "
+            "y los límites disponibles de Gemini API."
+        )
+
+async def show_assistant(query, context):
+    context.user_data["apex_assistant_active"] = True
+    text = (
+        "🤖 <b>ASISTENTE APEXQUANT</b>\n\n"
+        "Soy el asistente inteligente del ecosistema ApexQuant.\n\n"
+        "📊 Mercados y macroeconomía\n"
+        "📅 Eventos económicos\n"
+        "📈 Trading y análisis técnico/fundamental/institucional\n"
+        "🎓 Academia ApexQuant\n"
+        "📋 CopyTrading\n"
+        "🟢 OneRoyal\n"
+        "👥 IB, Sub-IB, Public Agent y referidos\n"
+        "🌐 Información reciente de la web\n\n"
+        "💬 <b>Escríbeme tu pregunta.</b>\n\n"
+        "⚠️ En proyecciones de activos mostraré escenarios y riesgos, no certezas."
+    )
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=assistant_keyboard())
+
+async def assistant_reset(query, context):
+    context.user_data["assistant_history"] = []
+    context.user_data["apex_assistant_active"] = True
+    await query.edit_message_text(
+        "🧹 <b>NUEVA CONVERSACIÓN</b>\n\nListo. ¿Qué quieres consultar?",
+        parse_mode="HTML",
+        reply_markup=assistant_keyboard()
+    )
+
+async def assistant_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.channel_post or not update.message or not update.effective_user:
+        return
+    if context.user_data.get("admin_action") or not context.user_data.get("apex_assistant_active"):
+        return
+
+    question = (update.message.text or "").strip()
+    if not question:
+        return
+
+    history = context.user_data.get("assistant_history", [])
+    if not isinstance(history, list):
+        history = []
+
+    calendar_context = await assistant_calendar_context(question)
+    await update.message.chat.send_action("typing")
+    answer = await call_apexquant_assistant(
+        question, history, calendar_context
+    )
+
+    history.extend([
+        {"role": "user", "content": question},
+        {"role": "assistant", "content": answer}
+    ])
+    context.user_data["assistant_history"] = history[-ASSISTANT_MAX_HISTORY:]
+
+    await update.message.reply_text(
+        answer[:3900],
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=assistant_keyboard()
+    )
 
 # ============================================================
 # BUTTON HANDLER
@@ -3127,6 +3395,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if data == "community":
             await show_community(query)
+            return
+        if data == "assistant":
+            await show_assistant(query, context)
+            return
+        if data == "assistant_reset":
+            await assistant_reset(query, context)
             return
         if data == "back_main":
             await show_main(query)
@@ -3276,6 +3550,7 @@ def main():
     application.add_handler(CommandHandler("cancelar", admin_cancel), group=0)
     application.add_handler(CallbackQueryHandler(button_handler), group=0)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text_input), group=0)
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, assistant_text_input), group=0)
     application.add_handler(MessageHandler(filters.PHOTO, admin_photo_input), group=0)
     application.add_handler(MessageHandler(filters.ALL, capture_channel_post), group=1)
     application.add_error_handler(error_handler)
