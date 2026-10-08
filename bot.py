@@ -5,6 +5,8 @@ import logging
 import asyncio
 import json
 import io
+import hashlib
+import xml.etree.ElementTree as ET
 from decimal import Decimal, InvalidOperation
 from html import escape
 from urllib.request import Request, urlopen
@@ -835,145 +837,506 @@ def event_value(event, *keys):
 
 
 # ============================================================
+# CONTEXTO DINÁMICO DE EVENTOS
+# ============================================================
+
+CALENDAR_EVENT_CACHE = {}
+CALENDAR_WEB_CONTEXT_CACHE = {}
+
+
+def calendar_event_key(event):
+
+    raw = "|".join(
+        str(event_value(event, key))
+        for key in (
+            "id",
+            "event_id",
+            "name",
+            "title",
+            "currency",
+            "date",
+            "datetime",
+            "time_utc"
+        )
+    )
+
+    return hashlib.sha1(
+        raw.encode("utf-8")
+    ).hexdigest()[:10]
+
+
+def cache_calendar_event(event):
+
+    key = calendar_event_key(event)
+    CALENDAR_EVENT_CACHE[key] = event
+
+    if len(CALENDAR_EVENT_CACHE) > 100:
+        oldest_key = next(iter(CALENDAR_EVENT_CACHE))
+        CALENDAR_EVENT_CACHE.pop(oldest_key, None)
+
+    return key
+
+
+def calendar_event_profile(name):
+    """Perfil educativo base según el tipo de evento."""
+
+    text = str(name or "").lower()
+
+    profile = {
+        "measure": "Indicador económico programado.",
+        "why": (
+            "Su importancia depende del resultado, las expectativas "
+            "previas y el contexto económico."
+        ),
+        "higher": (
+            "Un resultado superior al esperado puede modificar las "
+            "expectativas del mercado sobre crecimiento, inflación "
+            "o política monetaria."
+        ),
+        "lower": (
+            "Un resultado inferior al esperado puede modificar las "
+            "expectativas del mercado sobre crecimiento, inflación "
+            "o política monetaria."
+        )
+    }
+
+    if any(x in text for x in (
+        "cpi", "consumer price", "inflation"
+    )):
+        profile = {
+            "measure": (
+                "Mide la evolución de los precios que pagan los consumidores "
+                "y ayuda a evaluar las presiones inflacionarias."
+            ),
+            "why": (
+                "La inflación es especialmente relevante para las expectativas "
+                "sobre las decisiones de los bancos centrales."
+            ),
+            "higher": (
+                "Una inflación superior a la esperada puede aumentar las "
+                "expectativas de una política monetaria más restrictiva."
+            ),
+            "lower": (
+                "Una inflación inferior a la esperada puede reducir las "
+                "expectativas de presión monetaria."
+            )
+        }
+
+    elif any(x in text for x in (
+        "nfp", "non-farm", "employment situation", "payroll",
+        "adp employment"
+    )):
+        profile = {
+            "measure": (
+                "Evalúa la evolución del mercado laboral, incluyendo la "
+                "creación de empleo según el informe correspondiente."
+            ),
+            "why": (
+                "El empleo ayuda a evaluar la fortaleza de la economía y "
+                "las expectativas de política monetaria."
+            ),
+            "higher": (
+                "Un resultado laboral más fuerte de lo esperado puede "
+                "reforzar la percepción de una economía resistente."
+            ),
+            "lower": (
+                "Un resultado laboral más débil puede aumentar las "
+                "expectativas de una economía menos resistente."
+            )
+        }
+
+    elif any(x in text for x in (
+        "jobless", "unemployment", "labour force", "labor force"
+    )):
+        profile = {
+            "measure": (
+                "Proporciona información sobre las condiciones del mercado "
+                "laboral y el nivel de empleo o desempleo."
+            ),
+            "why": (
+                "El mercado laboral es uno de los factores considerados por "
+                "los bancos centrales al evaluar la economía."
+            ),
+            "higher": (
+                "Una mejora del empleo o una caída del desempleo puede "
+                "interpretarse como mayor fortaleza laboral."
+            ),
+            "lower": (
+                "Un deterioro del empleo o un aumento del desempleo puede "
+                "señalar una pérdida de fortaleza laboral."
+            )
+        }
+
+    elif any(x in text for x in (
+        "pmi", "ism manufacturing", "ism services"
+    )):
+        profile = {
+            "measure": (
+                "Mide la actividad empresarial y ayuda a evaluar si "
+                "determinados sectores se expanden o contraen."
+            ),
+            "why": (
+                "Puede ofrecer una señal relativamente temprana sobre "
+                "la actividad económica."
+            ),
+            "higher": "Un resultado superior al esperado suele indicar mayor actividad económica.",
+            "lower": "Un resultado inferior al esperado puede señalar una pérdida de actividad económica."
+        }
+
+    elif any(x in text for x in (
+        "gdp", "gross domestic product"
+    )):
+        profile = {
+            "measure": "Mide el crecimiento de la producción económica de un país o región.",
+            "why": "Permite evaluar la fortaleza general de la economía.",
+            "higher": "Un crecimiento superior al esperado puede reforzar la percepción de una economía más sólida.",
+            "lower": "Un crecimiento inferior al esperado puede generar preocupación sobre la actividad económica."
+        }
+
+    elif any(x in text for x in (
+        "retail sales", "consumer spending", "personal income"
+    )):
+        profile = {
+            "measure": "Aporta información sobre el consumo y los ingresos de los hogares.",
+            "why": "El consumo representa una parte importante de la actividad económica.",
+            "higher": "Un consumo superior al esperado puede apuntar a una demanda interna más resistente.",
+            "lower": "Un consumo inferior al esperado puede apuntar a una demanda más débil."
+        }
+
+    elif any(x in text for x in (
+        "ppi", "producer price"
+    )):
+        profile = {
+            "measure": "Mide cambios en los precios recibidos por productores y aporta información sobre presiones de costes.",
+            "why": "Puede ofrecer información adicional sobre la evolución de las presiones inflacionarias.",
+            "higher": "Un dato superior puede sugerir mayores presiones de costes.",
+            "lower": "Un dato inferior puede indicar menores presiones de costes."
+        }
+
+    elif any(x in text for x in (
+        "fomc", "fed", "federal reserve", "ecb", "bank of england",
+        "boe", "bank of japan", "boj", "bank of canada", "boc",
+        "rba", "rbnz", "snb", "rate decision", "interest rate"
+    )):
+        profile = {
+            "measure": "Es un evento relacionado con política monetaria o comunicación de un banco central.",
+            "why": "Los tipos de interés y la orientación monetaria pueden modificar las expectativas sobre el coste del dinero.",
+            "higher": "Un tono más restrictivo de lo esperado puede aumentar las expectativas de tipos más elevados.",
+            "lower": "Un tono más flexible de lo esperado puede reducir las expectativas de tipos elevados."
+        }
+
+    elif any(x in text for x in (
+        "minutes", "beige book"
+    )):
+        profile = {
+            "measure": "Recoge información y opiniones sobre las condiciones económicas y, en algunos casos, el debate de política monetaria.",
+            "why": "Puede ayudar a interpretar cómo evolucionan las expectativas sobre futuras decisiones monetarias.",
+            "higher": "Un tono más restrictivo puede reforzar las expectativas de una política monetaria más firme.",
+            "lower": "Un tono más flexible puede reducir esas expectativas."
+        }
+
+    elif any(x in text for x in (
+        "consumer confidence", "consumer sentiment"
+    )):
+        profile = {
+            "measure": "Evalúa la percepción de los consumidores sobre la economía y sus condiciones futuras.",
+            "why": "La confianza puede influir en las expectativas sobre consumo y actividad económica.",
+            "higher": "Una confianza superior puede indicar una percepción más positiva de la economía.",
+            "lower": "Una confianza inferior puede señalar mayor cautela entre los consumidores."
+        }
+
+    elif any(x in text for x in (
+        "housing", "home sales"
+    )):
+        profile = {
+            "measure": "Proporciona información sobre la actividad del mercado inmobiliario.",
+            "why": "La vivienda está relacionada con consumo, crédito y actividad económica.",
+            "higher": "Una actividad inmobiliaria mayor puede reforzar la percepción de demanda resistente.",
+            "lower": "Una actividad menor puede señalar debilidad en determinados segmentos."
+        }
+
+    elif "trade balance" in text:
+        profile = {
+            "measure": "Mide la diferencia entre exportaciones e importaciones de bienes y servicios.",
+            "why": "Permite evaluar parte de la relación comercial de una economía con el exterior.",
+            "higher": "Un saldo comercial más favorable puede reflejar una mejora relativa de las exportaciones.",
+            "lower": "Un saldo menos favorable puede reflejar mayores importaciones o menores exportaciones."
+        }
+
+    return profile
+
+
+def affected_currencies(currency, name=""):
+    currency = str(currency or "").upper()
+    text = str(name or "").lower()
+
+    direct = {
+        "USD": ["USD", "EUR", "GBP", "JPY", "CAD", "AUD", "NZD", "CHF"],
+        "EUR": ["EUR", "USD", "GBP", "CHF"],
+        "GBP": ["GBP", "USD", "EUR"],
+        "JPY": ["JPY", "USD", "AUD"],
+        "CHF": ["CHF", "USD", "EUR"],
+        "CAD": ["CAD", "USD"],
+        "AUD": ["AUD", "USD", "JPY"],
+        "NZD": ["NZD", "USD", "AUD"]
+    }
+
+    # Eventos de bancos centrales suelen afectar principalmente a su divisa.
+    central_bank = any(x in text for x in (
+        "fomc", "fed", "federal reserve", "ecb", "bank of england",
+        "boe", "bank of japan", "boj", "bank of canada", "boc",
+        "rba", "rbnz", "snb"
+    ))
+
+    if central_bank and currency:
+        related = direct.get(currency, [currency])
+        return related[:5]
+
+    return direct.get(
+        currency,
+        [currency] if currency else []
+    )
+
+
+async def fetch_web_headlines(event):
+    """Busca contexto reciente bajo demanda mediante Google News RSS."""
+
+    name = str(event_value(event, "name", "title", "event") or "economic event")
+    currency = str(event_value(event, "currency", "country", "ccy") or "").upper()
+    cache_key = calendar_event_key(event)
+
+    cached = CALENDAR_WEB_CONTEXT_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    query_text = f'"{name}" {currency} economy' if currency else f'"{name}" economy'
+
+    url = (
+        "https://news.google.com/rss/search?"
+        + urlencode({
+            "q": query_text,
+            "hl": "en-US",
+            "gl": "US",
+            "ceid": "US:en"
+        })
+    )
+
+    def load_news():
+        request = Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 ApexQuantBot/1.0"
+            }
+        )
+        with urlopen(request, timeout=10) as response:
+            return response.read()
+
+    try:
+        loop = asyncio.get_running_loop()
+        raw = await loop.run_in_executor(None, load_news)
+        root = ET.fromstring(raw)
+        headlines = []
+
+        for item in root.findall(".//item")[:4]:
+            title = item.findtext("title", "").strip()
+            link = item.findtext("link", "").strip()
+            source = item.findtext("source", "").strip()
+
+            if title:
+                headlines.append({
+                    "title": title,
+                    "link": link,
+                    "source": source
+                })
+
+        CALENDAR_WEB_CONTEXT_CACHE[cache_key] = headlines
+        if len(CALENDAR_WEB_CONTEXT_CACHE) > 50:
+            oldest_key = next(iter(CALENDAR_WEB_CONTEXT_CACHE))
+            CALENDAR_WEB_CONTEXT_CACHE.pop(oldest_key, None)
+
+        return headlines
+
+    except Exception as error:
+        logger.warning(
+            "No se pudo obtener contexto web para %s: %s",
+            name,
+            error
+        )
+        return []
+
+
+def event_result_interpretation(consensus, prior, actual):
+
+    if not actual:
+        return (
+            "⏳ <b>Lectura actual:</b> el dato todavía no ha sido publicado. "
+            "El consenso y el dato anterior sirven como referencias para comparar "
+            "el resultado cuando se publique."
+        )
+
+    if not consensus:
+        return (
+            "🧾 <b>Lectura actual:</b> el dato ya fue publicado, pero no hay "
+            "consenso disponible para una comparación directa."
+        )
+
+    return (
+        "📌 <b>Lectura actual:</b> compara el resultado con el consenso y el "
+        "dato anterior. La reacción del mercado también depende de las "
+        "expectativas previas y del contexto macroeconómico."
+    )
+
+
+async def show_calendar_context(query, event_key):
+
+    event = CALENDAR_EVENT_CACHE.get(event_key)
+
+    if not event:
+        await query.edit_message_text(
+            "⚠️ <b>El contexto de este evento ya no está disponible.</b>\n\n"
+            "Actualiza el calendario y vuelve a seleccionar el evento.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔄 Actualizar", callback_data="calendar")
+            ]])
+        )
+        return
+
+    name = str(event_value(event, "name", "title", "event") or "Evento económico")
+    currency = str(event_value(event, "currency", "country", "ccy") or "N/D").upper()
+    impact = str(event_value(event, "impact", "importance") or "N/D").lower()
+    consensus = event_value(event, "consensus", "forecast", "expected")
+    prior = event_value(event, "prior", "previous")
+    actual = event_value(event, "actual")
+
+    profile = calendar_event_profile(name)
+    affected = affected_currencies(currency, name)
+    headlines = await fetch_web_headlines(event)
+
+    impact_text = {
+        "high": "🔴 ALTO",
+        "medium": "🟠 MEDIO",
+        "low": "🟢 BAJO"
+    }.get(impact, "⚪ N/D")
+
+    lines = [
+        "📚 <b>CONTEXTO DEL EVENTO</b>",
+        "",
+        f"📰 <b>{escape(name)}</b>",
+        f"🌎 Divisa principal: <b>{escape(currency)}</b>",
+        f"📊 Impacto: <b>{impact_text}</b>",
+        "",
+        "📖 <b>¿Qué es?</b>",
+        escape(profile["measure"]),
+        "",
+        "🏦 <b>¿Por qué importa?</b>",
+        escape(profile["why"]),
+        "",
+        "📈 <b>Si sorprende al alza:</b>",
+        escape(profile["higher"]),
+        "",
+        "📉 <b>Si sorprende a la baja:</b>",
+        escape(profile["lower"]),
+        "",
+        "💱 <b>Posibles divisas afectadas:</b>",
+        escape(", ".join(affected) or "N/D"),
+        "",
+        event_result_interpretation(consensus, prior, actual)
+    ]
+
+    keyboard = []
+
+    if headlines:
+        lines.extend([
+            "",
+            "🌐 <b>Información reciente encontrada en la web:</b>"
+        ])
+
+        for index, item in enumerate(headlines[:4], start=1):
+            source = f" — {item['source']}" if item.get("source") else ""
+            lines.append(
+                f"• {escape(item['title'])}{escape(source)}"
+            )
+            if item.get("link"):
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"📰 Fuente {index}",
+                        url=item["link"]
+                    )
+                ])
+    else:
+        lines.extend([
+            "",
+            "🌐 <b>Información web:</b>",
+            "No se encontraron titulares recientes relacionados "
+            "de forma suficientemente clara con este evento."
+        ])
+
+    lines.extend([
+        "",
+        "⚠️ <b>ApexQuant:</b> este contexto es informativo y educativo. "
+        "No constituye una predicción garantizada ni una señal de compra o venta.",
+        "",
+        "ℹ️ Datos del calendario: FinanceCalendar.com"
+    ])
+
+    keyboard.append([
+        InlineKeyboardButton(
+            "🔙 Volver al calendario",
+            callback_data="calendar"
+        )
+    ])
+
+    await query.edit_message_text(
+        "\n".join(lines)[:3900],
+        parse_mode="HTML",
+        disable_web_page_preview=True,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
+
+# ============================================================
 # FORMATEAR EVENTO
 # ============================================================
 
 def format_calendar_event(event):
 
-    name = event_value(
-        event,
-        "name",
-        "title",
-        "event"
-    )
-
-    currency = event_value(
-        event,
-        "currency",
-        "country",
-        "ccy"
-    )
-
-    impact = event_value(
-        event,
-        "impact",
-        "importance"
-    )
-
-    event_date = event_value(
-        event,
-        "date",
-        "datetime",
-        "time_utc",
-        "time_et"
-    )
-
-    consensus = event_value(
-        event,
-        "consensus",
-        "forecast",
-        "expected"
-    )
-
-    prior = event_value(
-        event,
-        "prior",
-        "previous"
-    )
-
-    actual = event_value(
-        event,
-        "actual"
-    )
-
-    # --------------------------------------------------------
-    # IMPACTO
-    # --------------------------------------------------------
+    name = event_value(event, "name", "title", "event")
+    currency = event_value(event, "currency", "country", "ccy")
+    impact = event_value(event, "impact", "importance")
+    event_date = event_value(event, "date", "datetime", "time_utc", "time_et")
+    consensus = event_value(event, "consensus", "forecast", "expected")
+    prior = event_value(event, "prior", "previous")
+    actual = event_value(event, "actual")
 
     impact_text = str(impact).lower()
-
     if impact_text == "high":
-        impact_icon = "🔴"
-        impact_label = "ALTO"
-
+        impact_icon, impact_label = "🔴", "ALTO"
     elif impact_text == "medium":
-        impact_icon = "🟠"
-        impact_label = "MEDIO"
-
+        impact_icon, impact_label = "🟠", "MEDIO"
     elif impact_text == "low":
-        impact_icon = "🟢"
-        impact_label = "BAJO"
-
+        impact_icon, impact_label = "🟢", "BAJO"
     else:
         impact_icon = "⚪"
-        impact_label = (
-            str(impact)
-            if impact
-            else "N/D"
-        )
+        impact_label = str(impact) if impact else "N/D"
 
-    # --------------------------------------------------------
-    # MONEDA
-    # --------------------------------------------------------
-
-    if currency:
-        currency_text = str(currency).upper()
-    else:
-        currency_text = "N/D"
-
-    # --------------------------------------------------------
-    # FECHA / HORA
-    # --------------------------------------------------------
-
-    if event_date:
-
-        event_date_text = str(event_date)
-
-        if "T" in event_date_text:
-
-            event_date_text = (
-                event_date_text
-                .replace("T", " ")
-            )
-
-    else:
-
-        event_date_text = "Hora no disponible"
-
-    # --------------------------------------------------------
-    # RESULTADOS
-    # --------------------------------------------------------
+    currency_text = str(currency).upper() if currency else "N/D"
+    event_date_text = str(event_date).replace("T", " ") if event_date else "Hora no disponible"
 
     result_lines = []
-
     if consensus:
-        result_lines.append(
-            f"📊 Consenso: {consensus}"
-        )
-
+        result_lines.append(f"📊 Consenso: {escape(str(consensus))}")
     if prior:
-        result_lines.append(
-            f"⏮️ Anterior: {prior}"
-        )
-
+        result_lines.append(f"⏮️ Anterior: {escape(str(prior))}")
     if actual:
-        result_lines.append(
-            f"✅ Actual: {actual}"
-        )
+        result_lines.append(f"✅ Actual: {escape(str(actual))}")
 
-    result_text = ""
-
-    if result_lines:
-        result_text = (
-            "\n"
-            + "\n".join(result_lines)
-        )
+    result_text = "\n" + "\n".join(result_lines) if result_lines else ""
 
     return (
-        f"{impact_icon} <b>{impact_label}</b> | "
-        f"<b>{currency_text}</b>\n"
-        f"📰 {name or 'Evento económico'}\n"
-        f"🕒 {event_date_text}"
+        f"{impact_icon} <b>{escape(impact_label)}</b> | <b>{escape(currency_text)}</b>\n"
+        f"📰 {escape(str(name or 'Evento económico'))}\n"
+        f"🕒 {escape(event_date_text)}"
         f"{result_text}"
     )
 
@@ -1083,39 +1446,70 @@ async def show_events(
     )
 
     # --------------------------------------------------------
-    # LÍMITE VISUAL
+    # LÍMITE VISUAL Y BOTONES DE CONTEXTO
     # --------------------------------------------------------
 
-    filtered_events = filtered_events[:30]
+    # Telegram limita los mensajes a 4096 caracteres.
+    # Mostramos hasta 10 eventos y, además, reducimos la lista
+    # si el texto se acerca al límite.
+    selected_events = []
+    current_length = len(str(title)) + 100
 
-    if not filtered_events:
+    for event in filtered_events:
+        if len(selected_events) >= 10:
+            break
 
+        formatted = format_calendar_event(event)
+        projected = current_length + len(formatted) + 2
+
+        if projected > 3300 and selected_events:
+            break
+
+        selected_events.append((event, formatted))
+        current_length = projected
+
+    if not selected_events:
         text = (
             f"{title}\n\n"
             "📭 <b>No hay eventos disponibles "
             "para los filtros seleccionados.</b>\n\n"
-            "Puedes actualizar o consultar "
-            "otra fecha/divisa."
+            "Puedes actualizar o consultar otra fecha/divisa."
         )
-
+        keyboard = []
     else:
-
         event_texts = []
+        keyboard = []
 
-        for event in filtered_events:
+        for event, formatted in selected_events:
+            event_key = cache_calendar_event(event)
+            event_texts.append(formatted)
 
-            event_texts.append(
-                format_calendar_event(event)
-            )
+            short_name = str(event_value(event, "name", "title", "event") or "Evento")
+            if len(short_name) > 34:
+                short_name = short_name[:31] + "..."
+
+            keyboard.append([
+                InlineKeyboardButton(
+                    f"📚 {short_name}",
+                    callback_data=f"calendar_context_{event_key}"
+                )
+            ])
+
+        extra_count = len(filtered_events) - len(selected_events)
+        extra_text = (
+            f"\n\nℹ️ Hay {extra_count} eventos adicionales. "
+            "Usa filtros de fecha o divisa para consultarlos."
+            if extra_count > 0 else ""
+        )
 
         text = (
             f"{title}\n\n"
             + "\n\n".join(event_texts)
-            + "\n\n"
-            "ℹ️ Fuente: FinanceCalendar.com"
+            + extra_text
+            + "\n\nℹ️ Fuente: FinanceCalendar.com"
         )
 
-    keyboard = [
+    keyboard.extend([
         [
             InlineKeyboardButton(
                 "🔄 Actualizar",
@@ -1128,7 +1522,7 @@ async def show_events(
                 callback_data="calendar"
             )
         ]
-    ]
+    ])
 
     await query.edit_message_text(
         text,
@@ -1210,67 +1604,79 @@ async def show_calendar_high(query):
 
 async def currency_events(query):
 
-    keyboard = [
-        [
-            InlineKeyboardButton(
-                "🇺🇸 USD",
-                callback_data="currency_USD"
-            ),
-            InlineKeyboardButton(
-                "🇪🇺 EUR",
-                callback_data="currency_EUR"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🇬🇧 GBP",
-                callback_data="currency_GBP"
-            ),
-            InlineKeyboardButton(
-                "🇯🇵 JPY",
-                callback_data="currency_JPY"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🇨🇭 CHF",
-                callback_data="currency_CHF"
-            ),
-            InlineKeyboardButton(
-                "🇨🇦 CAD",
-                callback_data="currency_CAD"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🇦🇺 AUD",
-                callback_data="currency_AUD"
-            ),
-            InlineKeyboardButton(
-                "🇳🇿 NZD",
-                callback_data="currency_NZD"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                "🔙 Volver",
-                callback_data="calendar"
-            )
-        ]
-    ]
+    start_date, end_date = week_dates()
+    events = await fetch_calendar_events(start_date, end_date)
 
-    text = (
-        "💵 <b>EVENTOS POR DIVISA</b>\n\n"
-        "Selecciona la divisa que quieres "
-        "consultar:"
-    )
+    currency_flags = {
+        "USD": "🇺🇸",
+        "EUR": "🇪🇺",
+        "GBP": "🇬🇧",
+        "JPY": "🇯🇵",
+        "CHF": "🇨🇭",
+        "CAD": "🇨🇦",
+        "AUD": "🇦🇺",
+        "NZD": "🇳🇿"
+    }
+
+    currencies = set()
+
+    for event in events or []:
+        if not isinstance(event, dict):
+            continue
+
+        currency = str(
+            event_value(event, "currency", "country", "ccy")
+            or ""
+        ).upper().strip()
+
+        if currency:
+            currencies.add(currency)
+
+    currencies = sorted(currencies)
+    keyboard = []
+    row = []
+
+    for currency in currencies:
+        flag = currency_flags.get(currency, "💵")
+        row.append(
+            InlineKeyboardButton(
+                f"{flag} {currency}",
+                callback_data=f"currency_{currency}"
+            )
+        )
+
+        if len(row) == 2:
+            keyboard.append(row)
+            row = []
+
+    if row:
+        keyboard.append(row)
+
+    if currencies:
+        text = (
+            "💵 <b>EVENTOS POR DIVISA</b>\n\n"
+            "Estas son únicamente las divisas que tienen "
+            "eventos disponibles durante esta semana.\n\n"
+            "👇 Selecciona una divisa:"
+        )
+    else:
+        text = (
+            "💵 <b>EVENTOS POR DIVISA</b>\n\n"
+            "📭 No hay eventos con una divisa identificada "
+            "durante el período consultado."
+        )
+
+    keyboard.append([
+        InlineKeyboardButton(
+            "🔙 Volver",
+            callback_data="calendar"
+        )
+    ])
 
     await query.edit_message_text(
         text,
         parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
-        )
+        reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
@@ -2643,6 +3049,10 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if data == "calendar_currency":
             await currency_events(query)
+            return
+        if data.startswith("calendar_context_"):
+            event_key = data.replace("calendar_context_", "", 1)
+            await show_calendar_context(query, event_key)
             return
         if data.startswith("currency_"):
             await show_currency_events(query, data.replace("currency_", "", 1))
