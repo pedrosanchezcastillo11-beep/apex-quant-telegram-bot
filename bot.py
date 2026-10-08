@@ -3318,14 +3318,19 @@ async def assistant_reset(query, context):
     context.user_data["apex_assistant_active"] = True
     text = "🧹 <b>NUEVA CONVERSACIÓN</b>\n\nListo. ¿Qué quieres consultar?"
     current_text = query.message.text if query.message else ""
-    # button_handler ya responde al callback; aquí solo editamos si realmente cambió.
+
+    # Si ya estamos en este mismo estado, no volvemos a editar el mensaje.
+    # Aun así confirmamos visualmente la acción mediante el aviso de Telegram.
     if current_text == "🧹 NUEVA CONVERSACIÓN\n\nListo. ¿Qué quieres consultar?":
+        await query.answer("🧹 Conversación reiniciada. Escribe tu pregunta.", show_alert=False)
         return
+
     await query.edit_message_text(
         text,
         parse_mode="HTML",
         reply_markup=assistant_keyboard()
     )
+    await query.answer("🧹 Conversación nueva. Escribe tu pregunta.", show_alert=False)
 
 async def assistant_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.channel_post or not update.message or not update.effective_user:
@@ -3558,7 +3563,10 @@ def main():
     application.add_handler(CommandHandler("cancelar", admin_cancel), group=0)
     application.add_handler(CallbackQueryHandler(button_handler), group=0)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text_input), group=0)
-    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, assistant_text_input), group=0)
+    # El manejador de administración acepta cualquier texto en group=0.
+    # El asistente va en group=1 para recibir también los mensajes normales
+    # cuando no hay una acción administrativa activa.
+    application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, assistant_text_input), group=1)
     application.add_handler(MessageHandler(filters.PHOTO, admin_photo_input), group=0)
     application.add_handler(MessageHandler(filters.ALL, capture_channel_post), group=1)
     application.add_error_handler(error_handler)
