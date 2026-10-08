@@ -836,6 +836,121 @@ def event_value(event, *keys):
     return ""
 
 
+def event_currency(event):
+    """Obtiene la divisa afectada de forma robusta.
+
+    FinanceCalendar no garantiza un campo `currency` en todos sus eventos.
+    Por eso probamos primero códigos directos y, si no existen, usamos país,
+    nombre/título y la URL del evento como respaldo.
+    """
+
+    if not isinstance(event, dict):
+        return ""
+
+    # 1) Campos directos que distintas versiones/feeds pueden entregar.
+    direct_keys = (
+        "currency",
+        "currency_code",
+        "currencyCode",
+        "ccy",
+        "currency_iso",
+        "currencyIso",
+        "currency_iso_code",
+        "currencyIsoCode",
+    )
+
+    for key in direct_keys:
+        value = event.get(key)
+
+        if isinstance(value, dict):
+            value = (
+                value.get("code")
+                or value.get("currency")
+                or value.get("iso")
+                or value.get("iso_code")
+                or value.get("isoCode")
+            )
+
+        if value is not None:
+            code = str(value).upper().strip()
+            if code in {
+                "USD", "EUR", "GBP", "JPY", "CHF", "CAD",
+                "AUD", "NZD", "CNY", "CNH", "HKD", "SGD", "SEK",
+                "NOK", "DKK", "MXN", "BRL", "INR", "KRW", "ZAR"
+            }:
+                return code
+
+    # 2) País/código de país.
+    country = event_value(
+        event,
+        "countryCode",
+        "country_code",
+        "country",
+        "countryName",
+        "country_name"
+    )
+
+    country_text = str(country or "").upper().strip()
+
+    country_map = {
+        "US": "USD", "USA": "USD", "UNITED STATES": "USD",
+        "EU": "EUR", "EUROZONE": "EUR", "EURO AREA": "EUR",
+        "GERMANY": "EUR", "FRANCE": "EUR", "ITALY": "EUR",
+        "SPAIN": "EUR", "NETHERLANDS": "EUR",
+        "GB": "GBP", "UK": "GBP", "UNITED KINGDOM": "GBP",
+        "JAPAN": "JPY", "JP": "JPY",
+        "SWITZERLAND": "CHF", "CH": "CHF",
+        "CANADA": "CAD", "CA": "CAD",
+        "AUSTRALIA": "AUD", "AU": "AUD",
+        "NEW ZEALAND": "NZD", "NZ": "NZD",
+        "CHINA": "CNY", "CN": "CNY",
+        "HONG KONG": "HKD", "HK": "HKD",
+        "SINGAPORE": "SGD", "SG": "SGD",
+        "SWEDEN": "SEK", "SE": "SEK",
+        "NORWAY": "NOK", "NO": "NOK",
+        "DENMARK": "DKK", "DK": "DKK",
+        "MEXICO": "MXN", "MX": "MXN",
+        "BRAZIL": "BRL", "BR": "BRL",
+        "INDIA": "INR", "IN": "INR",
+        "SOUTH KOREA": "KRW", "KOREA": "KRW", "KR": "KRW",
+        "SOUTH AFRICA": "ZAR", "ZA": "ZAR",
+    }
+
+    if country_text in country_map:
+        return country_map[country_text]
+
+    # 3) País/divisa implícito en el nombre, título o URL.
+    name = str(
+        event_value(event, "name", "title", "event")
+        or ""
+    ).upper()
+    url = str(event_value(event, "url", "link") or "").upper()
+    haystack = f"{name} {url}"
+
+    keyword_map = [
+        (("US ", "U.S.", "UNITED STATES", "AMERICAN", "FED", "FOMC",
+          "FEDERAL RESERVE", "JOBLESS CLAIM", "NON-FARM", "NONFARM",
+          "PAYROLL", "ADP EMPLOYMENT", "ISM ", "US CPI", "US GDP",
+          "US RETAIL"), "USD"),
+        (("EUROZONE", "EURO AREA", "EUROPEAN CENTRAL BANK", "ECB",
+          "EUROPEAN", "GERMANY", "FRANCE", "ITALY", "SPAIN"), "EUR"),
+        (("UK ", "U.K.", "UNITED KINGDOM", "BRITAIN", "BOE",
+          "BANK OF ENGLAND", "BRITISH"), "GBP"),
+        (("JAPAN", "BOJ", "BANK OF JAPAN", "JAPANESE"), "JPY"),
+        (("SWITZERLAND", "SNB", "SWISS NATIONAL BANK", "SWISS"), "CHF"),
+        (("CANADA", "BOC", "BANK OF CANADA", "CANADIAN"), "CAD"),
+        (("AUSTRALIA", "RBA", "RESERVE BANK OF AUSTRALIA", "AUSTRALIAN"), "AUD"),
+        (("NEW ZEALAND", "RBNZ", "RESERVE BANK OF NEW ZEALAND", "NEW ZEALAND"), "NZD"),
+        (("CHINA", "PBOC", "PEOPLE'S BANK OF CHINA", "CHINESE"), "CNY"),
+    ]
+
+    for keywords, code in keyword_map:
+        if any(keyword in haystack for keyword in keywords):
+            return code
+
+    return ""
+
+
 # ============================================================
 # CONTEXTO DINÁMICO DE EVENTOS
 # ============================================================
@@ -1102,7 +1217,7 @@ async def fetch_web_headlines(event):
     """Busca contexto reciente bajo demanda mediante Google News RSS."""
 
     name = str(event_value(event, "name", "title", "event") or "economic event")
-    currency = str(event_value(event, "currency", "country", "ccy") or "").upper()
+    currency = event_currency(event)
     cache_key = calendar_event_key(event)
 
     cached = CALENDAR_WEB_CONTEXT_CACHE.get(cache_key)
@@ -1203,7 +1318,7 @@ async def show_calendar_context(query, event_key):
         return
 
     name = str(event_value(event, "name", "title", "event") or "Evento económico")
-    currency = str(event_value(event, "currency", "country", "ccy") or "N/D").upper()
+    currency = event_currency(event) or "N/D"
     impact = str(event_value(event, "impact", "importance") or "N/D").lower()
     consensus = event_value(event, "consensus", "forecast", "expected")
     prior = event_value(event, "prior", "previous")
@@ -1302,7 +1417,7 @@ async def show_calendar_context(query, event_key):
 def format_calendar_event(event):
 
     name = event_value(event, "name", "title", "event")
-    currency = event_value(event, "currency", "country", "ccy")
+    currency = event_currency(event)
     impact = event_value(event, "impact", "importance")
     event_date = event_value(event, "date", "datetime", "time_utc", "time_et")
     consensus = event_value(event, "consensus", "forecast", "expected")
@@ -1416,16 +1531,9 @@ async def show_events(
 
         if currency:
 
-            event_currency = str(
-                event_value(
-                    event,
-                    "currency",
-                    "country",
-                    "ccy"
-                )
-            ).upper()
+            event_currency_code = event_currency(event)
 
-            if event_currency != currency.upper():
+            if event_currency_code != currency.upper():
                 continue
 
         filtered_events.append(event)
@@ -1624,10 +1732,7 @@ async def currency_events(query):
         if not isinstance(event, dict):
             continue
 
-        currency = str(
-            event_value(event, "currency", "country", "ccy")
-            or ""
-        ).upper().strip()
+        currency = event_currency(event).upper().strip()
 
         if currency:
             currencies.add(currency)
