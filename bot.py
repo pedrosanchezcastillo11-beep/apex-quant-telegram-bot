@@ -10,6 +10,7 @@ import xml.etree.ElementTree as ET
 from decimal import Decimal, InvalidOperation
 from html import escape
 from urllib.request import Request, urlopen
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from datetime import datetime, timedelta, date, timezone
 
@@ -45,15 +46,23 @@ ADMIN_TELEGRAM_ID = os.getenv("ADMIN_TELEGRAM_ID", "").strip()
 CONSENTS_FILE = os.getenv("CONSENTS_FILE", "/data/consents.json").strip()
 
 # ============================================================
-# ASISTENTE IA APEXQUANT — FASE 2
+# ASISTENTE IA APEXQUANT — GEMMA 4 + BÚSQUEDA WEB HÍBRIDA
 # ============================================================
-# Usa urllib para evitar añadir una dependencia pesada al Nano.
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash").strip()
+# Gemma 4 genera la respuesta final. Gemini se conserva únicamente
+# como motor de búsqueda web cuando la pregunta necesita información reciente.
+# Esto permite usar Gemma 4 sin perder la función de búsqueda web existente.
+GEMMA_API_KEY = os.getenv("GEMMA_API_KEY", os.getenv("GEMINI_API_KEY", "")).strip()
+GEMMA_MODEL = os.getenv("GEMMA_MODEL", "gemma-4-26b-a4b-it").strip()
+GEMMA_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+# Búsqueda web opcional mediante Gemini. Puede utilizar la misma API key.
+GEMINI_SEARCH_API_KEY = os.getenv("GEMINI_SEARCH_API_KEY", os.getenv("GEMINI_API_KEY", "")).strip()
+GEMINI_SEARCH_MODEL = os.getenv("GEMINI_SEARCH_MODEL", "gemini-2.5-flash").strip()
 GEMINI_WEB_SEARCH = os.getenv("GEMINI_WEB_SEARCH", "true").strip().lower() in {"1", "true", "yes", "on"}
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
 ASSISTANT_MAX_HISTORY = 8
 ASSISTANT_MAX_OUTPUT = 1800
+ASSISTANT_WEB_CONTEXT_MAX = 5000
 
 # ============================================================
 # ONEROYAL
@@ -3243,17 +3252,84 @@ def assistant_gemini_contents(history, question):
     contents.append({"role": "user", "parts": [{"text": str(question)}]})
     return contents
 
-async def call_apexquant_assistant(question, history, calendar_context=""):
-    if not GEMINI_API_KEY:
+async def assistant_web_search_context(question):
+    """Obtiene contexto web reciente mediante Gemini Search, separado de Gemma."""
+    if not GEMINI_WEB_SEARCH or not GEMINI_SEARCH_API_KEY:
+        return ""
+
+    payload = {
+        "systemInstruction": {
+            "parts": [{
+                "text": (
+                    "Eres el motor de investigación web de ApexQuant. "
+                    "Busca información reciente y relevante para responder la pregunta. "
+                    "No intentes dar una respuesta final extensa. Devuelve únicamente hechos, "
+                    "fechas, cifras y contexto verificable que otro modelo pueda utilizar. "
+                    "Si la información no es verificable o no aparece en fuentes recientes, indícalo."
+                )
+            }]
+        },
+        "contents": [{"role": "user", "parts": [{"text": str(question)}]}],
+        "generationConfig": {
+            "maxOutputTokens": 1200,
+            "temperature": 0.2
+        },
+        "tools": [{"google_search": {}}]
+    }
+
+    def request_search():
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        url = (
+            "https://generativelanguage.googleapis.com/v1beta/models/"
+            f"{GEMINI_SEARCH_MODEL}:generateContent"
+        )
+        request = Request(
+            url,
+            data=body,
+            method="POST",
+            headers={
+                "x-goog-api-key": GEMINI_SEARCH_API_KEY,
+                "Content-Type": "application/json"
+            }
+        )
+        try:
+            with urlopen(request, timeout=35) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as error:
+            error_body = error.read().decode("utf-8", errors="replace")
+            logger.warning(
+                "Gemini web search HTTP %s para modelo %s: %s",
+                error.code, GEMINI_SEARCH_MODEL, error_body[:1000]
+            )
+            return {}
+
+    try:
+        loop = asyncio.get_running_loop()
+        data = await loop.run_in_executor(None, request_search)
+        result = assistant_extract_output(data)
+        return result[:ASSISTANT_WEB_CONTEXT_MAX].strip()
+    except Exception as error:
+        logger.warning("Error en búsqueda web del asistente: %s", error)
+        return ""
+
+
+async def call_apexquant_assistant(question, history, calendar_context="", web_context=""):
+    if not GEMMA_API_KEY:
         return (
             "⚠️ <b>Asistente ApexQuant</b>\n\n"
             "El asistente IA todavía no está conectado.\n\n"
-            "Configura <code>GEMINI_API_KEY</code> en Deployka."
+            "Configura <code>GEMMA_API_KEY</code> en Deployka.\n\n"
+            "También puedes mantener <code>GEMINI_API_KEY</code> como respaldo para la búsqueda web."
         )
 
     instructions = APEXQUANT_ASSISTANT_INSTRUCTIONS
     if calendar_context:
-        instructions += calendar_context
+        instructions += "\n\n" + calendar_context
+    if web_context:
+        instructions += (
+            "\n\nCONTEXTO WEB RECIENTE — úsalo como información de apoyo y "
+            "no inventes datos que no aparezcan aquí:\n" + web_context
+        )
 
     payload = {
         "systemInstruction": {
@@ -3265,34 +3341,61 @@ async def call_apexquant_assistant(question, history, calendar_context=""):
             "temperature": 0.4
         }
     }
-    if GEMINI_WEB_SEARCH:
-        payload["tools"] = [{"google_search": {}}]
 
-    def request_gemini():
+    def request_gemma():
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        url = GEMMA_API_URL.format(model=GEMMA_MODEL)
         request = Request(
-            GEMINI_API_URL.format(model=GEMINI_MODEL),
+            url,
             data=body,
             method="POST",
             headers={
-                "x-goog-api-key": GEMINI_API_KEY,
+                "x-goog-api-key": GEMMA_API_KEY,
                 "Content-Type": "application/json"
             }
         )
-        with urlopen(request, timeout=45) as response:
-            return json.loads(response.read().decode("utf-8"))
+        try:
+            with urlopen(request, timeout=45) as response:
+                return json.loads(response.read().decode("utf-8"))
+        except HTTPError as error:
+            error_body = error.read().decode("utf-8", errors="replace")
+            logger.error(
+                "Gemma HTTP %s para modelo %s: %s",
+                error.code, GEMMA_MODEL, error_body[:1500]
+            )
+            raise RuntimeError(
+                f"Gemma HTTP {error.code} para modelo {GEMMA_MODEL}: {error_body[:500]}"
+            ) from error
 
     try:
         loop = asyncio.get_running_loop()
-        data = await loop.run_in_executor(None, request_gemini)
+        data = await loop.run_in_executor(None, request_gemma)
         answer = assistant_extract_output(data)
         return answer or "⚠️ No pude generar una respuesta en este momento."
     except Exception as error:
-        logger.error("Error en Asistente ApexQuant: %s", error, exc_info=True)
+        logger.error("Error en Asistente ApexQuant/Gemma: %s", error, exc_info=True)
+        error_text = str(error)
+        if "HTTP 404" in error_text:
+            return (
+                "⚠️ <b>Gemma 4 no está disponible para esta API Key/proyecto.</b>\n\n"
+                f"Modelo configurado: <code>{GEMMA_MODEL}</code>\n\n"
+                "La clave llegó al servidor, pero Google no habilitó ese modelo para el proyecto. "
+                "Revisaremos la disponibilidad antes de cambiar la clave."
+            )
+        if "HTTP 400" in error_text:
+            return (
+                "⚠️ <b>Gemma 4 rechazó la solicitud.</b>\n\n"
+                "La API recibió la clave, pero la configuración de la petición no es válida. "
+                "Revisaremos el modelo y el formato enviado."
+            )
+        if "HTTP 401" in error_text or "HTTP 403" in error_text:
+            return (
+                "⚠️ <b>Google rechazó la API Key.</b>\n\n"
+                "Revisa que la clave esté activa en Deployka y pertenezca al proyecto correcto."
+            )
         return (
             "⚠️ <b>No pude consultar el asistente.</b>\n\n"
-            "Revisa <code>GEMINI_API_KEY</code>, el modelo configurado "
-            "y los límites disponibles de Gemini API."
+            "Gemma 4 devolvió un error. El detalle quedó registrado en Deployka sin exponer la API Key."
         )
 
 async def show_assistant(query, context):
@@ -3347,9 +3450,18 @@ async def assistant_text_input(update: Update, context: ContextTypes.DEFAULT_TYP
         history = []
 
     calendar_context = await assistant_calendar_context(question)
+    web_context = ""
+    if assistant_relevant_calendar(question) or any(k in question.lower() for k in (
+        "actual", "actualmente", "último", "última", "últimos", "últimas",
+        "hoy", "ahora", "reciente", "recientes", "noticia", "noticias",
+        "precio", "cotización", "mercado", "mercados", "qué pasó",
+        "que paso", "últimas noticias", "latest", "today", "current"
+    )):
+        web_context = await assistant_web_search_context(question)
+
     await update.message.chat.send_action("typing")
     answer = await call_apexquant_assistant(
-        question, history, calendar_context
+        question, history, calendar_context, web_context
     )
 
     history.extend([
