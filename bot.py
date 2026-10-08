@@ -2179,7 +2179,8 @@ ACADEMY_MODULES = {
             "• Precio, spread, volatilidad y liquidez.\n"
             "• Órdenes de mercado y órdenes pendientes.\n"
             "• Stop Loss y Take Profit.\n"
-            "• Apalancamiento y margen.\n\n"
+            "• Apalancamiento y margen.\n"
+            "• Contratos, pips, lotaje y tamaño de posición (Parte 2).\n\n"
 
             "🔎 ¿Qué significa cada concepto?\n\n"
 
@@ -2259,6 +2260,56 @@ ACADEMY_MODULES = {
             "garantizada y por qué la gestión del riesgo forma parte del proceso "
             "desde el primer día."
         ),
+        # Página 2 del Módulo 1 (se abre con el botón "Siguiente").
+        "page2": {
+            "title": "📘 Módulo 1 — Parte 2: Contratos, Pips y Lotaje",
+            "text": (
+                "Estos conceptos te permiten medir movimientos y calcular cuánto "
+                "se opera. Son la base para entender el riesgo de cada operación.\n\n"
+
+                "📏 Contrato:\n"
+                "Es la cantidad estándar de un activo que representa 1 lote. En Forex, "
+                "1 lote estándar equivale a 100.000 unidades de la divisa base. En "
+                "índices, oro y otras materias primas el tamaño del contrato depende "
+                "del broker, por lo que conviene consultar la especificación del "
+                "instrumento en tu plataforma.\n\n"
+
+                "📍 Pip:\n"
+                "Es la unidad de referencia para medir el movimiento del precio. En la "
+                "mayoría de pares equivale a 0,0001 y en pares con JPY a 0,01.\n"
+                "Ejemplo: si EUR/USD pasa de 1,1000 a 1,1010, se movió 10 pips.\n\n"
+
+                "💲 Valor del pip:\n"
+                "Es cuánto dinero representa un pip según el lotaje. En EUR/USD, con "
+                "una cuenta en USD, 1 pip equivale aproximadamente a:\n"
+                "• 10 USD con 1.00 lote.\n"
+                "• 1 USD con 0.10 lote.\n"
+                "• 0,10 USD con 0.01 lote.\n"
+                "Varía según el par y la divisa de la cuenta.\n\n"
+
+                "⚖️ Lotaje:\n"
+                "Es el volumen de una operación expresado en lotes:\n"
+                "• 1.00 = lote estándar (100.000 unidades).\n"
+                "• 0.10 = mini lote (10.000 unidades).\n"
+                "• 0.01 = micro lote (1.000 unidades).\n"
+                "A mayor lotaje, mayor valor por pip: las ganancias y las pérdidas "
+                "se amplifican en la misma proporción.\n\n"
+
+                "🧮 Tamaño de posición:\n"
+                "Es la cantidad que se opera, calculada a partir del capital, el "
+                "porcentaje de riesgo y la distancia al Stop Loss. Fórmula:\n"
+                "Lotaje = Riesgo en dinero ÷ (Stop Loss en pips × valor del pip por lote)\n\n"
+
+                "📌 Ejemplo educativo:\n"
+                "Cuenta de 1.000 USD, riesgo del 1% (10 USD), Stop Loss de 20 pips "
+                "en EUR/USD (10 USD por pip con 1 lote).\n"
+                "Lotaje = 10 ÷ (20 × 10) = 0.05 lotes.\n\n"
+
+                "⚠️ El tamaño de posición no es lo mismo que el apalancamiento ni que "
+                "el margen: define cuánto puedes perder si el Stop Loss se activa. "
+                "Es un ejemplo con fines educativos, no una recomendación."
+            ),
+        },
     },
 
     "m2": {
@@ -2854,21 +2905,43 @@ async def show_academy(query):
     )
 
 async def show_academy_module(query, module_id):
-    module = ACADEMY_MODULES.get(module_id)
-    if not module:
+    # "m1_p2" = página 2 del módulo "m1".
+    page = 1
+    base_id = module_id
+    if module_id.endswith("_p2"):
+        base_id = module_id[:-3]
+        page = 2
+
+    module = ACADEMY_MODULES.get(base_id)
+    if not module or (page == 2 and not module.get("page2")):
         await show_academy(query)
         return
+
     keyboard = []
-    if module.get("visual"):
-        keyboard.append([InlineKeyboardButton("🖼️ Ver material visual", callback_data=f"academy_visual_{module['visual']}")])
+
+    if page == 2:
+        content = module["page2"]
+        keyboard.append([InlineKeyboardButton("⬅️ Parte 1", callback_data=f"academy_{base_id}")])
+        disclaimer = (
+            "⚠️ <b>Contenido educativo:</b> los ejemplos son ilustrativos y no "
+            "constituyen una recomendación de operación."
+        )
+    else:
+        content = module
+        if module.get("visual"):
+            keyboard.append([InlineKeyboardButton("🖼️ Ver material visual", callback_data=f"academy_visual_{module['visual']}")])
+        if module.get("page2"):
+            keyboard.append([InlineKeyboardButton("➡️ Siguiente: Contratos, pips y lotaje", callback_data=f"academy_{base_id}_p2")])
+        disclaimer = "⚠️ <b>Contenido educativo:</b> estudiar un concepto no garantiza que una operación futura tenga un resultado determinado."
+
     keyboard.extend([
         [InlineKeyboardButton("🎓 Academia", callback_data="academy")],
         [InlineKeyboardButton("🏠 Menú principal", callback_data="back_main")],
     ])
     text = (
-        f"{module['title']}\n\n"
-        f"{module['text']}\n\n"
-        "⚠️ <b>Contenido educativo:</b> estudiar un concepto no garantiza que una operación futura tenga un resultado determinado."
+        f"{content['title']}\n\n"
+        f"{content['text']}\n\n"
+        f"{disclaimer}"
     )
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
@@ -3020,15 +3093,21 @@ async def admin_academy_menu(query):
 async def publish_academy_module(context, module_id):
     channel_id=get_community_channel_id(); module=ACADEMY_MODULES.get(module_id)
     if not channel_id or not module: return False
-    text=f"🎓 <b>{module['title']}</b>\n\n{module['text']}\n\n⚠️ <b>Contenido educativo:</b> estudiar una metodología no garantiza resultados futuros."
-    chunks=[]
-    while len(text)>3900:
-        cut=text.rfind("\n",0,3900)
-        if cut<1000: cut=3900
-        chunks.append(text[:cut]); text=text[cut:].lstrip()
-    if text: chunks.append(text)
-    for chunk in chunks:
-        await context.bot.send_message(chat_id=channel_id,text=chunk,parse_mode="HTML")
+    # Contenido a publicar: página principal y, si existe, la página 2.
+    pages=[module]
+    if module.get("page2"): pages.append(module["page2"])
+    for page_index,page in enumerate(pages):
+        text=f"🎓 <b>{page['title']}</b>\n\n{page['text']}"
+        if page_index==len(pages)-1:
+            text+="\n\n⚠️ <b>Contenido educativo:</b> estudiar una metodología no garantiza resultados futuros."
+        chunks=[]
+        while len(text)>3900:
+            cut=text.rfind("\n",0,3900)
+            if cut<1000: cut=3900
+            chunks.append(text[:cut]); text=text[cut:].lstrip()
+        if text: chunks.append(text)
+        for chunk in chunks:
+            await context.bot.send_message(chat_id=channel_id,text=chunk,parse_mode="HTML")
     register_community_post(); return True
 
 
@@ -3234,7 +3313,7 @@ def assistant_extract_output(data):
         for candidate in candidates:
             content = candidate.get("content", {}) if isinstance(candidate, dict) else {}
             for part in content.get("parts", []) or []:
-                if isinstance(part, dict) and part.get("text"):
+                if isinstance(part, dict) and part.get("text") and not part.get("thought"):
                     pieces.append(str(part["text"]))
     except Exception:
         pass
@@ -3357,7 +3436,7 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
             "no inventes datos que no aparezcan aquí:\n" + web_context
         )
 
-        payload = {
+    payload = {
         "systemInstruction": {
             "parts": [
                 {
@@ -3370,10 +3449,7 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
             "maxOutputTokens": ASSISTANT_MAX_OUTPUT,
             "temperature": 1.0,
             "topP": 0.95,
-            "topK": 64,
-            "thinkingConfig": {
-                "thinkingLevel": "minimal"
-            }
+            "topK": 64
         }
     }
 
@@ -3427,6 +3503,16 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
             return (
                 "⚠️ <b>Google rechazó la API Key.</b>\n\n"
                 "Revisa que la clave esté activa en Deployka y pertenezca al proyecto correcto."
+            )
+        if "HTTP 429" in error_text:
+            return (
+                "⚠️ <b>El asistente está recibiendo demasiadas consultas.</b>\n\n"
+                "Espera un momento e inténtalo nuevamente."
+            )
+        if any(code in error_text for code in ("HTTP 500", "HTTP 502", "HTTP 503", "HTTP 504")):
+            return (
+                "⚠️ <b>El servicio de IA no está disponible temporalmente.</b>\n\n"
+                "Inténtalo nuevamente en unos minutos."
             )
         return (
             "⚠️ <b>No pude consultar el asistente.</b>\n\n"
@@ -3505,12 +3591,22 @@ async def assistant_text_input(update: Update, context: ContextTypes.DEFAULT_TYP
     ])
     context.user_data["assistant_history"] = history[-ASSISTANT_MAX_HISTORY:]
 
-    await update.message.reply_text(
-        answer[:3900],
-        parse_mode="HTML",
-        disable_web_page_preview=True,
-        reply_markup=assistant_keyboard()
-    )
+    try:
+        await update.message.reply_text(
+            answer[:3900],
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+            reply_markup=assistant_keyboard()
+        )
+    except Exception as send_error:
+        # Si el modelo devuelve HTML inválido (por ejemplo "<" o "&" sueltos),
+        # se reenvía como texto plano para que el usuario siempre reciba respuesta.
+        logger.warning("Respuesta del asistente con HTML inválido, se reenvía en texto plano: %s", send_error)
+        await update.message.reply_text(
+            answer[:3900],
+            disable_web_page_preview=True,
+            reply_markup=assistant_keyboard()
+        )
 
 # ============================================================
 # BUTTON HANDLER
