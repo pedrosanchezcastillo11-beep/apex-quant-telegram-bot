@@ -67,6 +67,9 @@ GEMINI_WEB_SEARCH = os.getenv("GEMINI_WEB_SEARCH", "true").strip().lower() in {"
 
 ASSISTANT_MAX_HISTORY = 8
 ASSISTANT_MAX_OUTPUT = 1800
+# Gemma 4 "piensa" antes de responder y esos tokens cuentan contra el límite.
+# Se deja margen extra para que el razonamiento no se coma la respuesta visible.
+ASSISTANT_THINKING_HEADROOM = 3000
 ASSISTANT_WEB_CONTEXT_MAX = 5000
 
 # ============================================================
@@ -3451,7 +3454,7 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
         },
         "contents": assistant_gemini_contents(history, question),
         "generationConfig": {
-            "maxOutputTokens": ASSISTANT_MAX_OUTPUT,
+            "maxOutputTokens": ASSISTANT_MAX_OUTPUT + ASSISTANT_THINKING_HEADROOM,
             "temperature": 1.0,
             "topP": 0.95,
             "topK": 64
@@ -3487,6 +3490,17 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
         loop = asyncio.get_running_loop()
         data = await loop.run_in_executor(None, request_gemma)
         answer = assistant_extract_output(data)
+        if not answer:
+            try:
+                cand = (data.get("candidates") or [{}])[0] if isinstance(data, dict) else {}
+                logger.warning(
+                    "Gemma devolvió respuesta vacía. finishReason=%s, promptFeedback=%s, usage=%s",
+                    cand.get("finishReason"),
+                    data.get("promptFeedback") if isinstance(data, dict) else None,
+                    data.get("usageMetadata") if isinstance(data, dict) else None
+                )
+            except Exception:
+                logger.warning("Gemma devolvió respuesta vacía (no se pudo leer el detalle).")
         return answer or "⚠️ No pude generar una respuesta en este momento."
     except Exception as error:
         logger.error("Error en Asistente ApexQuant/Gemma: %s", error, exc_info=True)
