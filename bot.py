@@ -113,6 +113,13 @@ COMMUNITY_CHANNEL_ID = os.getenv("COMMUNITY_CHANNEL_ID", "").strip()
 COMMUNITY_CONFIG_FILE = os.getenv("COMMUNITY_CONFIG_FILE", "/data/community_config.json").strip()
 COMMUNITY_STATS_FILE = os.getenv("COMMUNITY_STATS_FILE", "/data/community_stats.json").strip()
 COMMUNITY_EVENTS_FILE = os.getenv("COMMUNITY_EVENTS_FILE", "/data/community_events.json").strip()
+
+# Enlaces oficiales de las redes sociales de ApexQuant.
+# Los valores predeterminados permiten que el bot funcione aunque no se creen ENV.
+FACEBOOK_URL = os.getenv("FACEBOOK_URL", "https://www.facebook.com/share/1PATSc2Gxv/").strip()
+TWITTER_URL = os.getenv("TWITTER_URL", "https://x.com/ApexQuant_Fx").strip()
+YOUTUBE_URL = os.getenv("YOUTUBE_URL", "https://youtube.com/@apexquantfx?si=xnYPtmYxDfsSUYcr").strip()
+
 COMMUNITY_DAILY_TARGET = 3
 HIGH_IMPACT_CHECK_SECONDS = 300
 
@@ -255,16 +262,26 @@ async def show_community_gate(query):
 async def show_community(query):
     text = (
         "🌐 <b>COMUNIDAD APEXQUANT</b>\n\n"
-        "📢 <b>Telegram</b> — canal oficial de ApexQuant.\n\n"
-        "📘 Facebook — próximamente.\n"
-        "𝕏 X (Twitter) — próximamente.\n"
-        "▶️ YouTube — próximamente.\n\n"
-        "Esta sección se actualizará con los enlaces oficiales a medida que cada red sea creada y verificada."
+        "Conéctate con ApexQuant en nuestras redes oficiales.\n\n"
+        "📢 Telegram — canal oficial y novedades de la comunidad.\n"
+        "📘 Facebook — publicaciones y noticias de ApexQuant.\n"
+        "𝕏 X (Twitter) — actualizaciones y contenido de mercado.\n"
+        "▶️ YouTube — contenido audiovisual de ApexQuant.\n\n"
+        "💚 <b>Aprende, sigue y crece con nosotros.</b>"
     )
-    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup([
+    keyboard = [
         [InlineKeyboardButton("📢 Canal de Telegram", url=COMMUNITY_INVITE_URL)],
+        [InlineKeyboardButton("📘 Facebook", url=FACEBOOK_URL),
+         InlineKeyboardButton("𝕏 X (Twitter)", url=TWITTER_URL)],
+        [InlineKeyboardButton("▶️ YouTube", url=YOUTUBE_URL)],
         [InlineKeyboardButton("🔙 Volver", callback_data="back_main")]
-    ]))
+    ]
+    await query.edit_message_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        disable_web_page_preview=True
+    )
 
 
 async def capture_channel_post(update: Update, context: ContextTypes.DEFAULT_TYPE):
