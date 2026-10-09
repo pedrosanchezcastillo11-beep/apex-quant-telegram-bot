@@ -3426,7 +3426,17 @@ async def assistant_web_search_context(question):
         return ""
 
 
-async def call_apexquant_assistant(question, history, calendar_context="", web_context=""):
+async def assistant_notify_admin(notify_bot, text):
+    """Envía un aviso de diagnóstico solo al administrador (sin exponer API keys)."""
+    if not notify_bot or not ADMIN_TELEGRAM_ID:
+        return
+    try:
+        await notify_bot.send_message(chat_id=int(ADMIN_TELEGRAM_ID), text=text[:3500])
+    except Exception as notify_error:
+        logger.warning("No se pudo avisar al admin: %s", notify_error)
+
+
+async def call_apexquant_assistant(question, history, calendar_context="", web_context="", notify_bot=None):
     if not GEMMA_API_KEY:
         return (
             "⚠️ <b>Asistente ApexQuant</b>\n\n"
@@ -3474,7 +3484,7 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
             }
         )
         try:
-            with urlopen(request, timeout=45) as response:
+            with urlopen(request, timeout=90) as response:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as error:
             error_body = error.read().decode("utf-8", errors="replace")
@@ -3501,10 +3511,25 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
                 )
             except Exception:
                 logger.warning("Gemma devolvió respuesta vacía (no se pudo leer el detalle).")
+            try:
+                cand0 = (data.get("candidates") or [{}])[0] if isinstance(data, dict) else {}
+                await assistant_notify_admin(
+                    notify_bot,
+                    "🛠 DEBUG Asistente: respuesta vacía de Gemma\n"
+                    f"finishReason={cand0.get('finishReason')}\n"
+                    f"promptFeedback={data.get('promptFeedback') if isinstance(data, dict) else None}\n"
+                    f"usage={data.get('usageMetadata') if isinstance(data, dict) else None}"
+                )
+            except Exception:
+                pass
         return answer or "⚠️ No pude generar una respuesta en este momento."
     except Exception as error:
-        logger.error("Error en Asistente ApexQuant/Gemma: %s", error, exc_info=True)
+        logger.error("Error en Asistente ApexQuant/Gemma [%s]: %s", type(error).__name__, error, exc_info=True)
         error_text = str(error)
+        await assistant_notify_admin(
+            notify_bot,
+            f"🛠 DEBUG Asistente: {type(error).__name__}\n{error_text[:900]}"
+        )
         if "HTTP 404" in error_text:
             return (
                 "⚠️ <b>Gemma 4 no está disponible para esta API Key/proyecto.</b>\n\n"
@@ -3532,6 +3557,11 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
             return (
                 "⚠️ <b>El servicio de IA no está disponible temporalmente.</b>\n\n"
                 "Inténtalo nuevamente en unos minutos."
+            )
+        if "timed out" in error_text.lower() or "timeout" in error_text.lower():
+            return (
+                "⚠️ <b>El asistente tardó demasiado en responder.</b>\n\n"
+                "Inténtalo nuevamente en unos segundos."
             )
         return (
             "⚠️ <b>No pude consultar el asistente.</b>\n\n"
@@ -3601,7 +3631,8 @@ async def assistant_text_input(update: Update, context: ContextTypes.DEFAULT_TYP
 
     await update.message.chat.send_action("typing")
     answer = await call_apexquant_assistant(
-        question, history, calendar_context, web_context
+        question, history, calendar_context, web_context,
+        notify_bot=context.bot
     )
 
     history.extend([
