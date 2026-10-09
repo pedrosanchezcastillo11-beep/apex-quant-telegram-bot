@@ -302,28 +302,6 @@ def copytrading_menu():
     keyboard = []
 
     # --------------------------------------------------------
-    # COPYTRADING
-    # --------------------------------------------------------
-
-    if ONEROYAL_COPYTRADING_URL:
-
-        keyboard.append([
-            InlineKeyboardButton(
-                "📈 Seguir Apex Quant",
-                url=ONEROYAL_COPYTRADING_URL
-            )
-        ])
-
-    else:
-
-        keyboard.append([
-            InlineKeyboardButton(
-                "⚠️ CopyTrading no configurado",
-                callback_data="copy_link_missing"
-            )
-        ])
-
-    # --------------------------------------------------------
     # CUENTA ONEROYAL
     # --------------------------------------------------------
 
@@ -342,6 +320,28 @@ def copytrading_menu():
             InlineKeyboardButton(
                 "⚠️ Enlace OneRoyal no configurado",
                 callback_data="ib_link_missing"
+            )
+        ])
+
+    # --------------------------------------------------------
+    # COPYTRADING
+    # --------------------------------------------------------
+
+    if ONEROYAL_COPYTRADING_URL:
+
+        keyboard.append([
+            InlineKeyboardButton(
+                "📈 Seguir Apex Quant",
+                url=ONEROYAL_COPYTRADING_URL
+            )
+        ])
+
+    else:
+
+        keyboard.append([
+            InlineKeyboardButton(
+                "⚠️ CopyTrading no configurado",
+                callback_data="copy_link_missing"
             )
         ])
 
@@ -402,7 +402,9 @@ async def show_copy_menu(query):
         "⚠️ <b>Importante:</b>\n"
         "El CopyTrading implica riesgo. Los resultados pasados no garantizan "
         "resultados futuros y puedes perder capital.\n\n"
-        "👇 Utiliza las opciones disponibles para registrarte y comenzar."
+        "👇 <b>Cómo empezar:</b>\n"
+        "1️⃣ Pulsa <b>🏦 Abrir cuenta OneRoyal</b> para registrarte.\n"
+        "2️⃣ Después pulsa <b>📈 Seguir Apex Quant</b> para conectarte al CopyTrading."
     )
 
     await query.edit_message_text(
@@ -2021,35 +2023,59 @@ async def show_referrals(query):
         "Si quieres registrarte como cliente de OneRoyal mediante ApexQuant, utiliza "
         "el enlace de registro de ApexQuant para que la relación quede atribuida "
         "correctamente.\n\n"
-        "🔗 <b>2. ¿Quieres tu propio enlace Sub-IB?</b>\n"
-        "No necesitas buscar ni crear el enlace por tu cuenta. El manager de OneRoyal "
-        "confirmó a ApexQuant que ApexQuant puede crear enlaces para sus Sub-IB y "
-        "puede crear todos los enlaces que necesite.\n\n"
-        "📩 <b>3. Solicítalo directamente a ApexQuant</b>\n"
-        "Si quieres un enlace Sub-IB o un enlace de referido gestionado por ApexQuant, "
-        "pulsa <b>Solicitar enlace al equipo ApexQuant</b> y contacta directamente "
-        "con el administrador. No te enviaremos un enlace inventado: el enlace real "
-        "se crea y se entrega desde la gestión de ApexQuant.\n\n"
-        "💵 <b>4. Comisiones</b>\n"
-        "OneRoyal calcula las comisiones/rebates según el acuerdo IB o Sub-IB y la "
-        "actividad correspondiente. No se debe asumir una tasa concreta sin confirmar "
-        "el acuerdo aplicable.\n\n"
-        "📈 <b>PUBLIC AGENT PARA COPYTRADING</b>\n"
-        "Public Agent es diferente de Sub-IB: corresponde a ofertas de CopyTrading. "
-        "Cuando una oferta habilita esta función, el agente puede recibir la parte de "
-        "las fees que corresponda según la configuración de la oferta. El seguidor "
-        "puede tener que introducir el número de cuenta MT del agente durante la "
-        "suscripción.\n\n"
+        "📈 <b>2. Seguir a ApexQuant (CopyTrading)</b>\n"
+        "Con tu cuenta de OneRoyal ya registrada, usa el enlace de proveedor de "
+        "CopyTrading para conectarte y seguir la estrategia de ApexQuant.\n\n"
+        "🔗 <b>3. ¿Quieres tu propio enlace de afiliado (Sub-IB / Public Agent)?</b>\n"
+        "No necesitas buscar ni crear el enlace por tu cuenta. OneRoyal confirmó a "
+        "ApexQuant que puede crear los enlaces para sus afiliados, con los "
+        "porcentajes y parámetros que ApexQuant defina para cada uno.\n\n"
+        "🔄 <b>Cómo funciona la red de afiliados:</b>\n"
+        "• ApexQuant te crea tu enlace personal con tus porcentajes y parámetros.\n"
+        "• Tú invitas a personas con ese enlace.\n"
+        "• Ganas las comisiones que ApexQuant te haya configurado, dentro de las "
+        "condiciones de OneRoyal.\n"
+        "• Una vez configurado, el sistema distribuye las comisiones de forma "
+        "automática.\n\n"
+        "📩 <b>4. Solicítalo al manager de ApexQuant</b>\n"
+        "Pulsa <b>Contactar al manager de ApexQuant</b> y pide tu enlace. "
+        "No te enviaremos un enlace inventado: el enlace real se crea y se "
+        "entrega desde la gestión de ApexQuant.\n\n"
+        "💵 <b>5. Comisiones</b>\n"
+        "Las comisiones que recibe cada afiliado las determina ApexQuant al crear "
+        "su enlace, según lo permitido por OneRoyal. No se debe asumir una tasa "
+        "concreta sin confirmar el acuerdo aplicable.\n\n"
+        "ℹ️ <b>Sub-IB y Public Agent:</b> Sub-IB pertenece a la estructura de IB de "
+        "OneRoyal; Public Agent corresponde a ofertas de CopyTrading, donde el "
+        "agente puede recibir la parte de las fees que se configure en la oferta "
+        "y el seguidor puede tener que introducir el número de cuenta MT del agente "
+        "durante la suscripción.\n\n"
         "⚠️ <b>Importante:</b> la disponibilidad de IB, Sub-IB y Public Agent depende "
         "de aprobación, jurisdicción, términos y configuración de OneRoyal."
     )
     keyboard = []
     if ONEROYAL_IB_URL:
         keyboard.append([InlineKeyboardButton("🏦 Registrarme con OneRoyal", url=ONEROYAL_IB_URL)])
+    else:
+        keyboard.append([
+            InlineKeyboardButton(
+                "⚠️ Enlace OneRoyal no configurado",
+                callback_data="ib_link_missing"
+            )
+        ])
+    if ONEROYAL_COPYTRADING_URL:
+        keyboard.append([InlineKeyboardButton("📈 Seguir Apex Quant", url=ONEROYAL_COPYTRADING_URL)])
+    else:
+        keyboard.append([
+            InlineKeyboardButton(
+                "⚠️ CopyTrading no configurado",
+                callback_data="copy_link_missing"
+            )
+        ])
     if ADMIN_TELEGRAM_ID:
         keyboard.append([
             InlineKeyboardButton(
-                "📩 Solicitar enlace Sub-IB / referido",
+                "📩 Contactar al manager de ApexQuant",
                 url=f"tg://user?id={ADMIN_TELEGRAM_ID}"
             )
         ])
@@ -3236,7 +3262,7 @@ ApexQuant puede crear los enlaces para sus Sub-IB y puede crear todos los enlace
 que necesite. Por eso, si un usuario quiere un enlace Sub-IB o un enlace de
 referido generado por ApexQuant, NO le digas que debe solicitarlo directamente
 a OneRoyal: indícale que debe solicitarlo al equipo/administrador de ApexQuant
-mediante el botón de contacto disponible en Referidos. No inventes ni fabriques
+mediante el botón «Contactar al manager de ApexQuant» disponible en Referidos. No inventes ni fabriques
 URLs de Sub-IB. El administrador de ApexQuant es quien gestiona la creación y
 entrega del enlace correspondiente.
 
