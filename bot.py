@@ -397,149 +397,67 @@ def copytrading_menu():
 
 
 async def show_copy_menu(query):
-
     text = (
-        "📋 <b>COPYTRADING — APEX QUANT</b>\n\n"
-        "Apex Quant utiliza CopyTrading para que "
-        "los usuarios puedan seguir las operaciones "
-        "de la estrategia desde su propia cuenta.\n\n"
-        "🏦 Para utilizar el servicio necesitas "
-        "una cuenta con OneRoyal.\n\n"
-        "📈 Una vez registrada y configurada tu cuenta, "
-        "podrás acceder al sistema de CopyTrading "
-        "de Apex Quant.\n\n"
-        "💰 <b>Comisión de rendimiento:</b>\n"
-        "ApexQuant no cobra cuota de entrada ni cuota fija de gestión. "
-        "La comisión se aplica sobre las ganancias generadas de acuerdo con "
-        "las condiciones de la oferta. Si no se generan ganancias sujetas "
-        "a comisión, no se genera comisión de rendimiento.\n\n"
-        "🌎 <b>Elegibilidad:</b> OneRoyal aplica restricciones por jurisdicción. "
-        "Comprueba que puedes utilizar sus servicios desde tu país antes de "
-        "registrarte o depositar fondos.\n\n"
-        "⚠️ <b>Importante:</b>\n"
-        "El CopyTrading implica riesgo. Los resultados pasados no garantizan "
-        "resultados futuros y puedes perder capital.\n\n"
-        "👇 <b>Cómo empezar:</b>\n"
-        "1️⃣ Pulsa <b>🏦 Abrir cuenta OneRoyal</b> para registrarte.\n"
-        "2️⃣ Después pulsa <b>📈 Seguir Apex Quant</b> para conectarte al CopyTrading."
+        "📋 <b>COPYTRADING — APEXQUANT</b>\n\n"
+        "Sigue la estrategia ApexQuant desde tu propia cuenta de OneRoyal.\n\n"
+        "🧭 <b>Cómo empezar</b>\n"
+        "1️⃣ Regístrate en OneRoyal con el enlace IB de ApexQuant.\n"
+        "2️⃣ Completa la verificación de identidad y abre una cuenta compatible.\n"
+        "3️⃣ Abre el enlace de Social Trading y suscríbete a ApexQuant.\n"
+        "4️⃣ Revisa la cuenta MT5 solicitada y configura el riesgo disponible.\n\n"
+        "💰 <b>Distribución de las ganancias</b>\n"
+        "Según el esquema de rendimiento anunciado por ApexQuant, de las ganancias "
+        "sujetas a comisión, el 70% corresponde al usuario y el 30% a ApexQuant. "
+        "La aplicación efectiva depende de que la oferta de OneRoyal muestre y permita "
+        "esa configuración. No es una garantía de beneficio: también puedes perder capital.\n\n"
+        "✅ ApexQuant no cobra cuota de entrada ni cuota fija de gestión. Si no hay "
+        "ganancias sujetas a comisión, no se genera comisión de rendimiento.\n\n"
+        "🌎 Comprueba que OneRoyal y el CopyTrading estén disponibles en tu país antes "
+        "de registrarte o depositar fondos.\n\n"
+        "⚠️ El trading con apalancamiento implica riesgo de pérdida. Los resultados "
+        "pasados no garantizan resultados futuros."
     )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=copytrading_menu()
-    )
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=copytrading_menu())
 
 
 async def show_copy_info(query):
-
     text = (
         "ℹ️ <b>¿CÓMO FUNCIONA EL COPYTRADING?</b>\n\n"
-        "El CopyTrading permite que las operaciones de una "
-        "estrategia puedan replicarse en la cuenta de un usuario, "
-        "según la configuración y las condiciones disponibles "
-        "en la plataforma.\n\n"
-        "🔄 <b>Funcionamiento general:</b>\n"
-        "1️⃣ Registra y configura tu cuenta OneRoyal.\n"
-        "2️⃣ Accede al servicio de CopyTrading.\n"
-        "3️⃣ Busca y selecciona <b>Apex Quant</b>.\n"
-        "4️⃣ Configura los parámetros de riesgo y tamaño de operación "
-        "que permita la plataforma.\n"
-        "5️⃣ Una vez conectada la cuenta, las operaciones de la estrategia "
-        "pueden replicarse automáticamente según la configuración establecida.\n"
-        "6️⃣ Supervisa periódicamente tu cuenta y verifica que la conexión "
-        "y los parámetros continúen activos.\n\n"
-        "📊 <b>El resultado puede variar</b> según el capital, configuración "
-        "de riesgo, tamaño de las posiciones, ejecución y condiciones del mercado.\n\n"
-        "⚠️ <b>Importante:</b>\n"
-        "• El CopyTrading no garantiza beneficios.\n"
-        "• Las operaciones pueden generar pérdidas.\n"
-        "• El rendimiento pasado no garantiza resultados futuros.\n"
-        "• Cada usuario es responsable de su cuenta y de la configuración "
-        "de riesgo que utilice.\n\n"
-        "💰 <b>Comisiones:</b> ApexQuant no cobra cuota de entrada ni cuota fija "
-        "de gestión. La comisión de rendimiento, si corresponde, se aplica según "
-        "las condiciones vigentes de la oferta. Si no hay ganancias sujetas a "
-        "comisión, no hay comisión de rendimiento.\n\n"
-        "🌎 <b>Elegibilidad regional:</b> verifica tu país antes de registrarte. "
-        "OneRoyal mantiene restricciones regionales y sus condiciones pueden variar."
+        "• Las operaciones de la estrategia pueden replicarse en tu cuenta, según "
+        "la plataforma y la configuración elegida.\n"
+        "• Tú mantienes tu cuenta y eres responsable de revisar el capital, exposición "
+        "y parámetros de riesgo.\n\n"
+        "💰 <b>Reparto de rendimiento de ApexQuant</b>\n"
+        "El esquema previsto es 70% de las ganancias sujetas a comisión para el usuario "
+        "y 30% para ApexQuant. Confirma que las condiciones visibles en OneRoyal "
+        "coincidan antes de suscribirte.\n\n"
+        "ApexQuant no cobra cuota de entrada ni cuota fija de gestión. Si no existen "
+        "ganancias sujetas a comisión, no se genera comisión de rendimiento.\n\n"
+        "⚠️ No hay beneficios garantizados. Puedes perder parte o todo el capital. "
+        "Los resultados pasados no garantizan resultados futuros."
     )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=copytrading_menu()
-    )
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=copytrading_menu())
 
 
 async def show_copy_follow(query):
-
-    text = (
-        "📈 <b>SEGUIR APEX QUANT</b>\n\n"
-        "Desde aquí puedes acceder al CopyTrading "
-        "de Apex Quant.\n\n"
-        "1️⃣ Pulsa <b>📈 Seguir Apex Quant</b>.\n"
-        "2️⃣ Accede a la plataforma correspondiente.\n"
-        "3️⃣ Sigue las instrucciones de conexión.\n"
-        "4️⃣ Verifica que tu cuenta esté correctamente "
-        "configurada.\n\n"
-        "⚠️ Recuerda que el trading implica riesgo "
-        "de pérdida de capital."
-    )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=copytrading_menu()
-    )
+    await show_copy_info(query)
 
 
 async def show_copy_register(query):
-
     text = (
         "📝 <b>REGISTRO EN ONEROYAL</b>\n\n"
-        "Para utilizar CopyTrading necesitas una "
-        "cuenta con OneRoyal.\n\n"
-        "🏦 <b>Paso 1:</b> Pulsa "
-        "«Abrir cuenta OneRoyal».\n\n"
-        "🧾 <b>Paso 2:</b> Completa el registro "
-        "con tus datos.\n\n"
-        "🪪 <b>Paso 3:</b> Completa la verificación "
-        "de identidad (KYC), si corresponde.\n\n"
-        "💼 <b>Paso 4:</b> Configura la cuenta "
-        "adecuada para utilizar el servicio.\n\n"
-        "📈 <b>Paso 5:</b> Después podrás acceder "
-        "al CopyTrading de Apex Quant.\n\n"
-        "⚠️ No deposites fondos que no estés dispuesto "
-        "a perder."
+        "1️⃣ Pulsa «Abrir cuenta OneRoyal» y completa el registro con el enlace IB de ApexQuant.\n"
+        "2️⃣ Completa la verificación de identidad que solicite el broker.\n"
+        "3️⃣ Comprueba con OneRoyal qué tipo de cuenta y plataforma son compatibles.\n"
+        "4️⃣ Después pulsa «Seguir Apex Quant» para abrir el enlace de Social Trading.\n"
+        "5️⃣ Revisa la oferta, las comisiones y el riesgo antes de confirmar la suscripción.\n\n"
+        "⚠️ La disponibilidad y los requisitos dependen del país y de las condiciones vigentes."
     )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=copytrading_menu()
-    )
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=copytrading_menu())
 
 
 async def show_copy_steps(query):
-
-    text = (
-        "📚 <b>PASOS PARA COMENZAR</b>\n\n"
-        "1️⃣ Registra tu cuenta OneRoyal.\n"
-        "2️⃣ Completa el proceso KYC correspondiente.\n"
-        "3️⃣ Configura tu cuenta de trading.\n"
-        "4️⃣ Accede al servicio de CopyTrading.\n"
-        "5️⃣ Busca y sigue a Apex Quant.\n"
-        "6️⃣ Comprueba que la conexión esté activa.\n\n"
-        "⚠️ El CopyTrading no garantiza beneficios. "
-        "Las operaciones pueden generar pérdidas."
-    )
-
-    await query.edit_message_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=copytrading_menu()
-    )
+    await show_copy_register(query)
 
 
 # ============================================================
@@ -600,60 +518,72 @@ async def show_missing_ib_link(query):
 # ============================================================
 
 async def show_broker_oneroyal(query):
-
     text = (
         "🟢 <b>BROKER ONEROYAL</b>\n\n"
-        "Apex Quant integra OneRoyal como broker dentro del ecosistema "
-        "del proyecto. Desde aquí puedes consultar información general "
-        "y acceder directamente al registro mediante el enlace IB de Apex Quant.\n\n"
-        "⚡ <b>Cuentas ECN</b>\n"
-        "OneRoyal ofrece opciones de cuenta orientadas a condiciones "
-        "de ejecución y trading electrónico. Las condiciones concretas "
-        "de cada cuenta, spreads, comisiones, requisitos y disponibilidad "
-        "pueden variar según la jurisdicción y el tipo de cuenta.\n\n"
-        "📊 <b>Plataformas e instrumentos</b>\n"
-        "El registro permite acceder a los servicios y productos que "
-        "OneRoyal tenga disponibles para tu jurisdicción. Antes de operar, "
-        "revisa las condiciones oficiales de la cuenta que elijas.\n\n"
-        "🔗 <b>Registro mediante Apex Quant</b>\n"
-        "Utiliza el botón de abajo para registrarte con el enlace IB "
-        "asociado a Apex Quant.\n\n"
-        "⚠️ <b>Riesgo:</b> el trading de instrumentos financieros puede "
-        "ocasionar pérdidas. Verifica las condiciones, costes y riesgos "
-        "antes de depositar fondos o comenzar a operar."
+        "OneRoyal ofrece acceso a mercados de Forex y CFD, incluidos metales, índices, "
+        "energía, acciones y criptomonedas, según la entidad y el país. También ofrece "
+        "plataformas MT4/MT5, herramientas de trading y CopyTrading.\n\n"
+        "🛡️ <b>Regulación y entidad</b>\n"
+        "El grupo opera mediante distintas entidades. La información pública de OneRoyal "
+        "menciona ASIC (Australia), CySEC (Chipre), VFSC (Vanuatu) y FSA de San Vicente "
+        "y las Granadinas para entidades distintas. La protección legal depende de la "
+        "entidad con la que se abra la cuenta; no todas las licencias aplican a todos los clientes.\n\n"
+        "📊 <b>Cuentas ECN — opción destacada</b>\n"
+        "La cuenta ECN anuncia spreads brutos desde 0.0 pips y comisión separada. En la "
+        "página internacional consultada, la referencia publicada es USD 3.50 por lado "
+        "por lote (USD 7 ida y vuelta por lote estándar). El spread es variable y puede "
+        "ampliarse según liquidez, volatilidad e instrumento.\n\n"
+        "💵 <b>Comparación orientativa</b>\n"
+        "• ECN: spread desde 0.0 pips + comisión.\n"
+        "• Classic: comisión anunciada de USD 0 y spread desde 1.4 pips en la página internacional.\n"
+        "Los depósitos mínimos, tarifas, apalancamiento y tipos de cuenta pueden variar por país, "
+        "entidad, plataforma y proveedor de pago. Confirma siempre las condiciones que aparecen "
+        "en tu portal antes de depositar.\n\n"
+        "🧰 <b>Características anunciadas</b>\n"
+        "MT4/MT5, operaciones desde 0.01 lotes, asesores expertos y cobertura de saldo negativo "
+        "en cuentas/entidades donde corresponda; más de 2,000 instrumentos según la oferta publicada.\n\n"
+        "👇 Consulta también la información del bono tradeable.\n\n"
+        "⚠️ El apalancamiento puede aumentar las pérdidas. Verifica disponibilidad regional, "
+        "costes y documentación legal de tu entidad."
     )
-
     keyboard = []
-
     if ONEROYAL_IB_URL:
-        keyboard.append([
-            InlineKeyboardButton(
-                "🚀 Registrarme con OneRoyal",
-                url=ONEROYAL_IB_URL
-            )
-        ])
+        keyboard.append([InlineKeyboardButton("🚀 Registrarme con OneRoyal", url=ONEROYAL_IB_URL)])
     else:
-        keyboard.append([
-            InlineKeyboardButton(
-                "⚠️ Enlace OneRoyal no configurado",
-                callback_data="ib_link_missing"
-            )
-        ])
+        keyboard.append([InlineKeyboardButton("⚠️ Enlace OneRoyal no configurado", callback_data="ib_link_missing")])
+    keyboard.append([InlineKeyboardButton("🎁 Información del bono tradeable", callback_data="broker_bonus")])
+    keyboard.append([InlineKeyboardButton("🔙 Volver", callback_data="back_main")])
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
 
-    keyboard.extend([
-        [
-            InlineKeyboardButton(
-                "🔙 Volver",
-                callback_data="back_main"
-            )
-        ]
-    ])
 
-    await query.edit_message_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+async def show_broker_bonus(query):
+    text = (
+        "🎁 <b>BONO TRADEABLE ONEROYAL</b>\n\n"
+        "Según la explicación compartida por el manager de OneRoyal, el cliente debe "
+        "registrarse y completar la verificación de identidad. Se indicó que la verificación "
+        "inteligente puede solicitar una foto del documento y una selfie, si el portal la ofrece.\n\n"
+        "🧾 <b>Activación explicada por el manager</b>\n"
+        "1️⃣ Después de verificar la cuenta, entra al menú del cliente y abre la sección de bonos.\n"
+        "2️⃣ Lee y acepta los términos y condiciones del bono.\n"
+        "3️⃣ Selecciona un tipo de cuenta elegible; el manager mencionó cuentas Standard y ECN con bono.\n"
+        "4️⃣ Al elegir la cuenta y depositar, el bono aplicable se refleja según las condiciones de la promoción.\n\n"
+        "💵 <b>Ejemplos compartidos por el manager</b>\n"
+        "• Depósito de USD 300: ejemplo de bono de USD 300.\n"
+        "• Depósito de USD 1,000: ejemplo de bono de USD 500.\n\n"
+        "⚠️ <b>Importante sobre el bono</b>\n"
+        "El manager indicó que el bono no es retirable, mientras que las ganancias generadas "
+        "pueden ser retirables, sujeto a los términos. El bono puede servir como margen adicional "
+        "y puede retirarse/cancelarse si se retira depósito o equity, según las reglas aplicables. "
+        "Los ejemplos anteriores no son una oferta universal ni garantizan elegibilidad: el importe, "
+        "cuentas admitidas, vigencia y condiciones dependen de la promoción, país y entidad.\n\n"
+        "Antes de depositar, abre y lee los términos oficiales vigentes en tu portal y confirma "
+        "con OneRoyal si retirar fondos afecta el bono o las ganancias. No deposites solo por el bono."
     )
+    keyboard = []
+    if ONEROYAL_IB_URL:
+        keyboard.append([InlineKeyboardButton("🏦 Registrarme con OneRoyal", url=ONEROYAL_IB_URL)])
+    keyboard.append([InlineKeyboardButton("🔙 Volver a OneRoyal", callback_data="broker_oneroyal")])
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard), disable_web_page_preview=True)
 
 
 # ============================================================
@@ -2043,25 +1973,25 @@ async def show_referrals(query):
         "📈 <b>2. Seguir a ApexQuant (CopyTrading)</b>\n"
         "Con tu cuenta de OneRoyal ya registrada, usa el enlace de proveedor de "
         "CopyTrading para conectarte y seguir la estrategia de ApexQuant.\n\n"
-        "🔗 <b>3. ¿Quieres tu propio enlace de afiliado (Sub-IB / Public Agent)?</b>\n"
-        "No necesitas buscar ni crear el enlace por tu cuenta. OneRoyal confirmó a "
-        "ApexQuant que puede crear los enlaces para sus afiliados, con los "
-        "porcentajes y parámetros que ApexQuant defina para cada uno.\n\n"
-        "🔄 <b>Cómo funciona la red de afiliados:</b>\n"
-        "• ApexQuant te crea tu enlace personal con tus porcentajes y parámetros.\n"
-        "• Tú invitas a personas con ese enlace.\n"
-        "• Ganas las comisiones que ApexQuant te haya configurado, dentro de las "
-        "condiciones de OneRoyal.\n"
-        "• Una vez configurado, el sistema distribuye las comisiones de forma "
-        "automática.\n\n"
-        "📩 <b>4. Solicítalo al manager de ApexQuant</b>\n"
-        "Pulsa <b>Contactar al manager de ApexQuant</b> y pide tu enlace. "
-        "No te enviaremos un enlace inventado: el enlace real se crea y se "
-        "entrega desde la gestión de ApexQuant.\n\n"
-        "💵 <b>5. Comisiones</b>\n"
-        "Las comisiones que recibe cada afiliado las determina ApexQuant al crear "
-        "su enlace, según lo permitido por OneRoyal. No se debe asumir una tasa "
-        "concreta sin confirmar el acuerdo aplicable.\n\n"
+        "🔗 <b>3. ¿Quieres convertirte en agente adicional?</b>\n"
+        "El proceso se gestiona directamente con el administrador de ApexQuant. "
+        "Pulsa el botón <b>Contactar al manager de ApexQuant</b> que aparece abajo.\n\n"
+        "🪪 <b>4. Qué debes enviar por el canal privado</b>\n"
+        "Indica que solicitas ser agente adicional y facilita tu número de cuenta "
+        "de trading de OneRoyal para que el administrador pueda asociar el enlace "
+        "individual a la cuenta correcta. Envíalo únicamente por ese contacto privado, "
+        "nunca en grupos públicos. <b>Nunca envíes contraseñas ni códigos de acceso.</b>\n\n"
+        "🛠️ <b>5. Creación y configuración manual</b>\n"
+        "El administrador de ApexQuant crea manualmente tu enlace individual y "
+        "configura manualmente la comisión correspondiente en OneRoyal. El bot no "
+        "crea enlaces ni asigna comisiones automáticamente. Una vez que recibas el "
+        "enlace, podrás compartirlo con las personas que invites, conforme a las "
+        "condiciones de OneRoyal.\n\n"
+        "💵 <b>6. Participación del agente</b>\n"
+        "El agente recibe el 20% de la parte de comisión que corresponde a ApexQuant, "
+        "según la configuración manual acordada; no recibe el 20% de las ganancias "
+        "totales del seguidor. Como referencia, si ApexQuant recibe el 30% de una base "
+        "sujeta a comisión, el 20% de esa parte equivale al 6% de esa misma base.\n\n"
         "ℹ️ <b>Sub-IB y Public Agent:</b> Sub-IB pertenece a la estructura de IB de "
         "OneRoyal; Public Agent corresponde a ofertas de CopyTrading, donde el "
         "agente puede recibir la parte de las fees que se configure en la oferta "
@@ -3270,18 +3200,45 @@ ApexQuant integra OneRoyal para registro y CopyTrading mediante sus enlaces.
 El CopyTrading no garantiza beneficios y sus condiciones las determina OneRoyal.
 ApexQuant no custodia fondos ni controla cuentas de broker.
 
+ONEROYAL — COPYTRADING, COMISIONES Y BONO TRADEABLE
+Para las respuestas sobre la oferta de ApexQuant, explica que el esquema previsto es
+70% de las ganancias sujetas a comisión para el usuario y 30% para ApexQuant. No hay
+cuota de entrada ni cuota fija de gestión; si no hay ganancias sujetas a comisión, no
+se genera comisión de rendimiento. Aclara que la configuración efectiva debe coincidir
+con lo que muestra la oferta de OneRoyal.
+La comisión del 30% de ApexQuant en CopyTrading ya está configurada en OneRoyal.
+Para agentes adicionales, el administrador de ApexQuant configura manualmente un 20%
+sobre la parte de comisión de ApexQuant. No es el 20% de las ganancias totales del
+seguidor. Si ApexQuant recibe el 30% de una base sujeta a comisión, el 20% de esa parte
+equivale al 6% de esa misma base. Explica que la persona interesada debe pulsar
+«Contactar al manager de ApexQuant» en Referidos y enviar allí, de forma privada, su
+número de cuenta de trading para que el administrador cree el enlace individual
+asociado a esa cuenta y configure manualmente la comisión. Nunca solicites contraseñas,
+códigos de acceso ni datos de autenticación. El bot no hace esta configuración.
+Sobre OneRoyal, distingue la entidad regulada y jurisdicción del cliente: el grupo menciona
+ASIC, CySEC, VFSC y FSA de San Vicente y las Granadinas para entidades diferentes. Nunca
+digas que todas las licencias protegen a todos los clientes.
+En la página internacional consultada, OneRoyal publica ECN con spreads desde 0.0 pips y
+comisión de USD 3.50 por lado por lote; Classic con comisión cero y spreads desde 1.4 pips.
+Son cifras orientativas que pueden variar por país, entidad y tipo de cuenta.
+El manager de ApexQuant compartió estos ejemplos de bono tradeable: depósito USD 300,
+bono USD 300; depósito USD 1,000, bono USD 500. Explica que requieren verificación, elección
+de cuenta elegible y aceptación de términos. El bono no es retirable; las ganancias pueden
+ser retirables bajo condiciones. La promoción puede variar y el retiro de fondos puede
+afectar/eliminar el bono. Recomienda confirmar los términos vigentes en el portal antes
+de depositar. No inventes reglas que no estén confirmadas.
+
 ONEROYAL — REFERIDOS, IB, SUB-IB Y PUBLIC AGENT
 La información oficial consultada indica que los IB pueden usar enlaces
 personalizados, seguir clientes y comisiones mediante herramientas del portal,
 y que existe una estructura Master IB/Sub-IB sujeta a aprobación y condiciones.
-IMPORTANTE PARA APEXQUANT: el manager de OneRoyal de ApexQuant confirmó que
-ApexQuant puede crear los enlaces para sus Sub-IB y puede crear todos los enlaces
-que necesite. Por eso, si un usuario quiere un enlace Sub-IB o un enlace de
-referido generado por ApexQuant, NO le digas que debe solicitarlo directamente
-a OneRoyal: indícale que debe solicitarlo al equipo/administrador de ApexQuant
-mediante el botón «Contactar al manager de ApexQuant» disponible en Referidos. No inventes ni fabriques
-URLs de Sub-IB. El administrador de ApexQuant es quien gestiona la creación y
-entrega del enlace correspondiente.
+IMPORTANTE PARA APEXQUANT: si alguien quiere convertirse en agente adicional,
+indícale que use el botón «Contactar al manager de ApexQuant» del menú Referidos.
+Debe enviar por ese contacto privado su número de cuenta de trading de OneRoyal y
+solicitar el alta como agente. El administrador crea manualmente el enlace individual
+asociado a esa cuenta y configura manualmente la comisión del agente en OneRoyal.
+El bot no crea enlaces ni asigna comisiones. Nunca pidas contraseñas, códigos de
+acceso ni otros datos de autenticación. No inventes ni fabriques URLs de agentes.
 
 DIFERENCIA IMPORTANTE: Sub-IB pertenece a la estructura de partners/IB de
 OneRoyal y recibe su propio enlace de referidos cuando ApexQuant lo crea para él.
@@ -3756,6 +3713,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if data == "broker_oneroyal":
             await show_broker_oneroyal(query)
+            return
+        if data == "broker_bonus":
+            await show_broker_bonus(query)
             return
         if data == "markets":
             await show_markets(query)
