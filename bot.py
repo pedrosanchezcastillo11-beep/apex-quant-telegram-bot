@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import os
+import re
 import logging
 import asyncio
 import json
@@ -877,7 +878,14 @@ def event_currency(event):
         "country_code",
         "country",
         "countryName",
-        "country_name"
+        "country_name",
+        "region",
+        "market",
+        "location",
+        "geo",
+        "area",
+        "zone",
+        "flag"
     )
 
     country_text = str(country or "").upper().strip()
@@ -909,36 +917,84 @@ def event_currency(event):
     if country_text in country_map:
         return country_map[country_text]
 
-    # 3) País/divisa implícito en el nombre, título o URL.
-    name = str(
-        event_value(event, "name", "title", "event")
-        or ""
-    ).upper()
-    url = str(event_value(event, "url", "link") or "").upper()
-    haystack = f"{name} {url}"
+    # Variantes de nombre de país (p. ej. "United States of America", "Euro Zone").
+    if country_text:
+        country_norm = " " + re.sub(r"[^A-Z0-9]+", " ", country_text).strip() + " "
+        for key, code in country_map.items():
+            if len(key) > 2 and f" {key} " in country_norm:
+                return code
+
+    # 3) País/divisa implícito en el nombre, título, URL o descripción.
+    #    Se normaliza el texto (todo lo que no sea letra/número pasa a espacio)
+    #    para que "us-retail-sales", "TSE/JPX" o "U.S." también coincidan,
+    #    y se busca por PALABRA COMPLETA para evitar falsos positivos.
+    name = str(event_value(event, "name", "title", "event") or "")
+    url = str(event_value(event, "url", "link", "slug") or "")
+    extra = str(event_value(event, "description", "source", "category", "unit") or "")
+    raw_text = f"{name} {url} {extra}".upper()
+    haystack = " " + re.sub(r"[^A-Z0-9]+", " ", raw_text).strip() + " "
 
     keyword_map = [
-        (("US ", "U.S.", "UNITED STATES", "AMERICAN", "FED", "FOMC",
-          "FEDERAL RESERVE", "JOBLESS CLAIM", "NON-FARM", "NONFARM",
-          "PAYROLL", "ADP EMPLOYMENT", "ISM ", "US CPI", "US GDP",
-          "US RETAIL", "BEIGE BOOK"), "USD"),
-        (("EUROZONE", "EURO AREA", "EUROPEAN CENTRAL BANK", "ECB",
-          "EUROPEAN", "GERMANY", "FRANCE", "ITALY", "SPAIN"), "EUR"),
-        (("UK ", "U.K.", "UNITED KINGDOM", "BRITAIN", "BOE",
-          "BANK OF ENGLAND", "BRITISH"), "GBP"),
-        (("JAPAN", "BOJ", "BANK OF JAPAN", "JAPANESE"), "JPY"),
-        (("SWITZERLAND", "SNB", "SWISS NATIONAL BANK", "SWISS"), "CHF"),
-        (("CANADA", "BOC", "BANK OF CANADA", "CANADIAN"), "CAD"),
-        (("AUSTRALIA", "RBA", "RESERVE BANK OF AUSTRALIA", "AUSTRALIAN"), "AUD"),
-        (("NEW ZEALAND", "RBNZ", "RESERVE BANK OF NEW ZEALAND", "NEW ZEALAND"), "NZD"),
-        (("CHINA", "PBOC", "PEOPLE'S BANK OF CHINA", "CHINESE"), "CNY"),
+        # Países/regiones con nombre explícito primero (más fiable)
+        (("EUROZONE", "EURO ZONE", "EURO AREA", "EUROPEAN CENTRAL BANK", "ECB",
+          "EUROPEAN UNION", "EUROPE", "ZEW", "IFO", "GERMANY", "GERMAN", "FRANCE",
+          "FRENCH", "ITALY", "ITALIAN", "SPAIN", "SPANISH", "EUREX", "DAX", "EURONEXT"), "EUR"),
+        (("UNITED KINGDOM", "UK", "U K", "BRITAIN", "BRITISH", "BOE", "BANK OF ENGLAND",
+          "LONDON", "LSE", "FTSE", "SONIA"), "GBP"),
+        (("JAPAN", "JAPANESE", "BOJ", "BANK OF JAPAN", "TOKYO", "TSE", "JPX",
+          "NIKKEI", "TANKAN"), "JPY"),
+        (("SWITZERLAND", "SWISS", "SNB", "SWISS NATIONAL BANK", "ZURICH", "SIX"), "CHF"),
+        (("CANADA", "CANADIAN", "BOC", "BANK OF CANADA", "TORONTO", "TSX", "IVEY"), "CAD"),
+        (("AUSTRALIA", "AUSTRALIAN", "RBA", "RESERVE BANK OF AUSTRALIA", "SYDNEY", "ASX"), "AUD"),
+        (("NEW ZEALAND", "RBNZ", "RESERVE BANK OF NEW ZEALAND", "AUCKLAND", "NZX"), "NZD"),
+        (("CHINA", "CHINESE", "PBOC", "PEOPLE S BANK OF CHINA", "CAIXIN", "SHANGHAI",
+          "SHENZHEN", "NBS"), "CNY"),
+        (("HONG KONG", "HKEX", "HKMA"), "HKD"),
+        (("SINGAPORE", "MAS", "SGX"), "SGD"),
+        (("SWEDEN", "SWEDISH", "RIKSBANK"), "SEK"),
+        (("NORWAY", "NORWEGIAN", "NORGES BANK"), "NOK"),
+        (("MEXICO", "MEXICAN", "BANXICO"), "MXN"),
+        (("BRAZIL", "BRAZILIAN", "BCB"), "BRL"),
+        (("INDIA", "INDIAN", "RBI"), "INR"),
+        (("SOUTH KOREA", "KOREA", "KOREAN", "BOK"), "KRW"),
+        (("SOUTH AFRICA", "SARB"), "ZAR"),
+        # USD al final: "US" es una palabra corta y puede aparecer en otros contextos
+        (("USA", "UNITED STATES", "AMERICAN", "FED", "FOMC", "FEDERAL RESERVE",
+          "TREASURY", "JOBLESS CLAIMS", "NON FARM", "NONFARM", "NFP", "PAYROLL", "ADP",
+          "ISM", "PCE", "BEIGE BOOK", "NYSE", "NASDAQ", "SIFMA", "WALL STREET",
+          "COLUMBUS DAY", "JUNETEENTH", "S P GLOBAL", "MICHIGAN", "CONFERENCE BOARD",
+          "EMPIRE STATE", "PHILLY FED", "DALLAS FED", "CHICAGO PMI"), "USD"),
     ]
 
     for keywords, code in keyword_map:
-        if any(keyword in haystack for keyword in keywords):
+        if any(f" {keyword} " in haystack for keyword in keywords):
             return code
 
+    # "US" / "U.S." solo cuenta si va en mayúsculas en el título (evita el pronombre "us"),
+    # o como palabra suelta en la URL (p. ej. /us-retail-sales).
+    if re.search(r"(?<![A-Za-z])U\.?S\.?(?![A-Za-z])", name) or \
+            re.search(r"(?<![a-z])us(?![a-z])", url.lower()):
+        return "USD"
+
+    # 4) Sin pistas suficientes: se deja registro (una vez por evento) para poder
+    #    ver qué campos entrega el feed y afinar la detección.
+    try:
+        marker = name or str(event.get("id", ""))
+        if marker and marker not in _UNRESOLVED_CURRENCY_LOGGED:
+            if len(_UNRESOLVED_CURRENCY_LOGGED) > 200:
+                _UNRESOLVED_CURRENCY_LOGGED.clear()
+            _UNRESOLVED_CURRENCY_LOGGED.add(marker)
+            logger.info(
+                "Divisa no resuelta | nombre=%r | campos=%s | url=%r",
+                name[:80], sorted(event.keys()), url[:120]
+            )
+    except Exception:
+        pass
+
     return ""
+
+
+_UNRESOLVED_CURRENCY_LOGGED = set()
 
 
 # ============================================================
