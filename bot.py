@@ -62,7 +62,14 @@ GEMMA_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/{model}
 
 # Búsqueda web opcional mediante Gemini. Puede utilizar la misma API key.
 GEMINI_SEARCH_API_KEY = _clean_key(os.getenv("GEMINI_SEARCH_API_KEY") or os.getenv("GEMINI_API_KEY"))
-GEMINI_SEARCH_MODEL = os.getenv("GEMINI_SEARCH_MODEL", "gemini-2.5-flash").strip()
+GEMINI_SEARCH_MODEL = os.getenv("GEMINI_SEARCH_MODEL", "gemini-3.8-flash").strip()
+# Si el modelo configurado devuelve 404 (retirado/no disponible), se prueban estos en orden.
+GEMINI_MODEL_FALLBACKS = [
+    m.strip() for m in os.getenv(
+        "GEMINI_MODEL_FALLBACKS",
+        "gemini-3.8-flash,gemini-3-flash,gemini-flash-latest"
+    ).split(",") if m.strip()
+]
 GEMINI_WEB_SEARCH = os.getenv("GEMINI_WEB_SEARCH", "true").strip().lower() in {"1", "true", "yes", "on"}
 
 ASSISTANT_MAX_HISTORY = 8
@@ -3288,14 +3295,31 @@ def assistant_relevant_calendar(question):
         "calendario", "evento", "eventos", "cpi", "ppi", "nfp", "fomc",
         "fed", "beige book", "jobless", "desempleo", "inflación", "gdp",
         "pib", "ventas minoristas", "tipo de interés", "interest rate",
-        "macro", "mañana", "hoy", "esta semana"
+        "macro", "mañana", "hoy", "esta semana", "semana entrante",
+        "próxima semana", "proxima semana", "semana que viene", "next week"
     ))
 
 async def assistant_calendar_context(question):
     if not assistant_relevant_calendar(question):
         return ""
     try:
-        events = await fetch_calendar_events(today_date(), tomorrow_date())
+        q = str(question or "").lower()
+        next_week = any(k in q for k in (
+            "semana entrante", "próxima semana", "proxima semana",
+            "semana que viene", "siguiente semana", "next week"
+        ))
+        max_rows = 12
+        if next_week:
+            # Lunes a viernes de la próxima semana
+            start = date.today() + timedelta(days=(7 - date.today().weekday()))
+            end = start + timedelta(days=4)
+            max_rows = 30
+        elif any(k in q for k in ("esta semana", "semana", "week")):
+            start, end = date.today(), date.today() + timedelta(days=6)
+            max_rows = 30
+        else:
+            start, end = today_date(), tomorrow_date()
+        events = await fetch_calendar_events(start, end)
         rows = []
         for event in events or []:
             if not isinstance(event, dict):
@@ -3305,9 +3329,11 @@ async def assistant_calendar_context(question):
                 continue
             currency = event_currency(event) or "N/D"
             impact = str(event_value(event, "impact", "importance") or "N/D")
+            if (next_week or max_rows > 12) and impact.lower() not in ("high", "alto", "alta", "3", "medium", "medio", "media", "2"):
+                continue
             dt = str(event_value(event, "time_utc", "datetime", "date") or "")
             rows.append(f"- {dt} | {impact.upper()} | {currency} | {name}")
-            if len(rows) >= 12:
+            if len(rows) >= max_rows:
                 break
         return "\n\nCALENDARIO APEXQUANT:\n" + "\n".join(rows) if rows else ""
     except Exception as error:
@@ -3365,16 +3391,26 @@ def assistant_gemini_contents(history, question):
 
     return contents
 
+def assistant_model_chain(primary):
+    """Modelo principal seguido de los respaldos, sin repetir."""
+    chain = []
+    for m in [primary] + GEMINI_MODEL_FALLBACKS:
+        if m and m not in chain:
+            chain.append(m)
+    return chain
+
 async def assistant_web_search_context(question):
     """Obtiene contexto web reciente mediante Gemini Search, separado de Gemma."""
     if not GEMINI_WEB_SEARCH or not GEMINI_SEARCH_API_KEY:
         return ""
 
+    today_text = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     payload = {
         "systemInstruction": {
             "parts": [{
                 "text": (
                     "Eres el motor de investigación web de ApexQuant. "
+                    f"La fecha de hoy es {today_text} (UTC). "
                     "Busca información reciente y relevante para responder la pregunta. "
                     "No intentes dar una respuesta final extensa. Devuelve únicamente hechos, "
                     "fechas, cifras y contexto verificable que otro modelo pueda utilizar. "
@@ -3392,29 +3428,37 @@ async def assistant_web_search_context(question):
 
     def request_search():
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        url = (
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-            f"{GEMINI_SEARCH_MODEL}:generateContent"
-        )
-        request = Request(
-            url,
-            data=body,
-            method="POST",
-            headers={
-                "x-goog-api-key": GEMINI_SEARCH_API_KEY,
-                "Content-Type": "application/json"
-            }
-        )
-        try:
-            with urlopen(request, timeout=35) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except HTTPError as error:
-            error_body = error.read().decode("utf-8", errors="replace")
-            logger.warning(
-                "Gemini web search HTTP %s para modelo %s: %s",
-                error.code, GEMINI_SEARCH_MODEL, error_body[:1000]
+        for model in assistant_model_chain(GEMINI_SEARCH_MODEL):
+            url = (
+                "https://generativelanguage.googleapis.com/v1beta/models/"
+                f"{model}:generateContent"
             )
-            return {}
+            request = Request(
+                url,
+                data=body,
+                method="POST",
+                headers={
+                    "x-goog-api-key": GEMINI_SEARCH_API_KEY,
+                    "Content-Type": "application/json"
+                }
+            )
+            try:
+                with urlopen(request, timeout=35) as response:
+                    return json.loads(response.read().decode("utf-8"))
+            except HTTPError as error:
+                error_body = error.read().decode("utf-8", errors="replace")
+                logger.warning(
+                    "Gemini web search HTTP %s para modelo %s: %s",
+                    error.code, model, error_body[:600]
+                )
+                # 404 = modelo no disponible -> probar el siguiente. Otros errores: salir.
+                if error.code in (404, 500, 502, 503, 504):
+                    continue
+                return {}
+            except Exception as error:
+                logger.warning("Gemini web search falló con %s: %s", model, error)
+                continue
+        return {}
 
     try:
         loop = asyncio.get_running_loop()
@@ -3471,9 +3515,9 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
         }
     }
 
-    def request_gemma():
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        url = GEMMA_API_URL.format(model=GEMMA_MODEL)
+    def post_model(model, body_payload, timeout):
+        body = json.dumps(body_payload, ensure_ascii=False).encode("utf-8")
+        url = GEMMA_API_URL.format(model=model)
         request = Request(
             url,
             data=body,
@@ -3483,18 +3527,70 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
                 "Content-Type": "application/json"
             }
         )
-        try:
-            with urlopen(request, timeout=90) as response:
-                return json.loads(response.read().decode("utf-8"))
-        except HTTPError as error:
-            error_body = error.read().decode("utf-8", errors="replace")
-            logger.error(
-                "Gemma HTTP %s para modelo %s: %s",
-                error.code, GEMMA_MODEL, error_body[:1500]
-            )
-            raise RuntimeError(
-                f"Gemma HTTP {error.code} para modelo {GEMMA_MODEL}: {error_body[:500]}"
-            ) from error
+        with urlopen(request, timeout=timeout) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    def lean_payload():
+        """Versión más ligera de la petición para cuando Gemma devuelve 500."""
+        lean = json.loads(json.dumps(payload))
+        lean["generationConfig"] = {
+            "maxOutputTokens": ASSISTANT_MAX_OUTPUT + ASSISTANT_THINKING_HEADROOM,
+            "temperature": 0.8
+        }
+        lean["contents"] = assistant_gemini_contents((history or [])[-2:], question)
+        return lean
+
+    def request_gemma():
+        import time
+        last_error = None
+
+        # Intento 1 y 2: Gemma con la petición completa (reintento si es error 5xx/red).
+        # Intento 3: Gemma con petición ligera (sin topK/topP, menos historial).
+        attempts = [
+            (GEMMA_MODEL, payload, 90),
+            (GEMMA_MODEL, payload, 90),
+            (GEMMA_MODEL, lean_payload(), 90),
+        ]
+        for index, (model, body_payload, timeout) in enumerate(attempts, start=1):
+            try:
+                return post_model(model, body_payload, timeout)
+            except HTTPError as error:
+                error_body = error.read().decode("utf-8", errors="replace")
+                logger.error(
+                    "Gemma HTTP %s para modelo %s (intento %s): %s",
+                    error.code, model, index, error_body[:1500]
+                )
+                last_error = RuntimeError(
+                    f"Gemma HTTP {error.code} para modelo {model}: {error_body[:500]}"
+                )
+                # Solo se reintenta en errores temporales del servidor.
+                if error.code not in (500, 502, 503, 504):
+                    raise last_error from error
+                time.sleep(1.5 * index)
+            except Exception as error:
+                logger.error("Gemma falló (intento %s): %s", index, error)
+                last_error = error
+                time.sleep(1.5 * index)
+
+        # Último recurso: responder con un modelo Gemini para que el usuario nunca se quede sin respuesta.
+        for fallback_model in assistant_model_chain(GEMINI_SEARCH_MODEL):
+            try:
+                logger.warning("Gemma no respondió; usando respaldo %s", fallback_model)
+                fallback_payload = lean_payload()
+                return post_model(fallback_model, fallback_payload, 60)
+            except HTTPError as error:
+                error_body = error.read().decode("utf-8", errors="replace")
+                logger.error(
+                    "Respaldo %s HTTP %s: %s", fallback_model, error.code, error_body[:600]
+                )
+                if error.code in (404, 500, 502, 503, 504):
+                    continue
+                break
+            except Exception as error:
+                logger.error("Respaldo %s falló: %s", fallback_model, error)
+                continue
+
+        raise last_error or RuntimeError("Gemma HTTP 500: sin respuesta del modelo")
 
     try:
         loop = asyncio.get_running_loop()
