@@ -68,7 +68,7 @@ GEMINI_SEARCH_MODEL = os.getenv("GEMINI_SEARCH_MODEL", "gemini-3.8-flash").strip
 GEMINI_MODEL_FALLBACKS = [
     m.strip() for m in os.getenv(
         "GEMINI_MODEL_FALLBACKS",
-        "gemini-3.8-flash,gemini-3-flash,gemini-flash-latest"
+        "gemini-3.8-flash,gemini-flash-latest,gemini-flash-lite-latest"
     ).split(",") if m.strip()
 ]
 GEMINI_WEB_SEARCH = os.getenv("GEMINI_WEB_SEARCH", "true").strip().lower() in {"1", "true", "yes", "on"}
@@ -3447,13 +3447,62 @@ def assistant_gemini_contents(history, question):
 
     return contents
 
-def assistant_model_chain(primary):
-    """Modelo principal seguido de los respaldos, sin repetir."""
+def assistant_model_chain(primary, extra=None):
+    """Modelo principal seguido de los respaldos (y extras opcionales), sin repetir."""
     chain = []
-    for m in [primary] + GEMINI_MODEL_FALLBACKS:
+    for m in [primary] + GEMINI_MODEL_FALLBACKS + list(extra or []):
         if m and m not in chain:
             chain.append(m)
     return chain
+
+_DISCOVERED_MODELS_CACHE = {"ts": 0.0, "models": []}
+
+def assistant_discovered_models(api_key):
+    """Pregunta a Google qué modelos Gemini 'flash' están disponibles hoy.
+
+    Sirve de red de seguridad cuando los modelos configurados dan 404 (retirados)
+    o están saturados. Bloqueante: llamar solo desde un hilo (run_in_executor).
+    El resultado se guarda 1 hora en caché.
+    """
+    import time
+    now = time.time()
+    if _DISCOVERED_MODELS_CACHE["models"] and now - _DISCOVERED_MODELS_CACHE["ts"] < 3600:
+        return list(_DISCOVERED_MODELS_CACHE["models"])
+
+    found = []
+    try:
+        request = Request(
+            "https://generativelanguage.googleapis.com/v1beta/models?pageSize=200",
+            headers={"x-goog-api-key": api_key}
+        )
+        with urlopen(request, timeout=15) as response:
+            data = json.loads(response.read().decode("utf-8"))
+        for item in data.get("models", []) or []:
+            name = str(item.get("name", "")).replace("models/", "")
+            low = name.lower()
+            methods = item.get("supportedGenerationMethods") or []
+            if "generateContent" not in methods:
+                continue
+            if not low.startswith("gemini") or "flash" not in low:
+                continue
+            if any(bad in low for bad in (
+                "image", "tts", "audio", "live", "embedding",
+                "robotics", "computer", "vision", "exp"
+            )):
+                continue
+            found.append(name)
+    except Exception as error:
+        logger.warning("No se pudo listar modelos de Gemini: %s", error)
+
+    # Versiones más nuevas primero; los "lite" al final.
+    found.sort(reverse=True)
+    found.sort(key=lambda n: "lite" in n.lower())
+    found = found[:5]
+    if found:
+        _DISCOVERED_MODELS_CACHE["ts"] = now
+        _DISCOVERED_MODELS_CACHE["models"] = found
+        logger.info("Modelos Gemini descubiertos: %s", ", ".join(found))
+    return found
 
 async def assistant_web_search_context(question):
     """Obtiene contexto web reciente mediante Gemini Search, separado de Gemma."""
@@ -3483,37 +3532,52 @@ async def assistant_web_search_context(question):
     }
 
     def request_search():
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
-        for model in assistant_model_chain(GEMINI_SEARCH_MODEL):
-            url = (
-                "https://generativelanguage.googleapis.com/v1beta/models/"
-                f"{model}:generateContent"
-            )
-            request = Request(
-                url,
-                data=body,
-                method="POST",
-                headers={
-                    "x-goog-api-key": GEMINI_SEARCH_API_KEY,
-                    "Content-Type": "application/json"
-                }
-            )
-            try:
-                with urlopen(request, timeout=35) as response:
-                    return json.loads(response.read().decode("utf-8"))
-            except HTTPError as error:
-                error_body = error.read().decode("utf-8", errors="replace")
-                logger.warning(
-                    "Gemini web search HTTP %s para modelo %s: %s",
-                    error.code, model, error_body[:600]
+        import time
+        dead = set()  # modelos que dieron 404 (no existen), no se reintentan
+        for round_index in range(2):
+            if round_index == 0:
+                chain = assistant_model_chain(GEMINI_SEARCH_MODEL)
+            else:
+                # Segunda ronda: pausa corta y se suman los modelos que Google lista hoy.
+                time.sleep(2)
+                chain = assistant_model_chain(
+                    GEMINI_SEARCH_MODEL,
+                    assistant_discovered_models(GEMINI_SEARCH_API_KEY)
                 )
-                # 404 = modelo no disponible -> probar el siguiente. Otros errores: salir.
-                if error.code in (404, 500, 502, 503, 504):
+            for model in chain:
+                if model in dead:
                     continue
-                return {}
-            except Exception as error:
-                logger.warning("Gemini web search falló con %s: %s", model, error)
-                continue
+                url = (
+                    "https://generativelanguage.googleapis.com/v1beta/models/"
+                    f"{model}:generateContent"
+                )
+                request = Request(
+                    url,
+                    data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+                    method="POST",
+                    headers={
+                        "x-goog-api-key": GEMINI_SEARCH_API_KEY,
+                        "Content-Type": "application/json"
+                    }
+                )
+                try:
+                    with urlopen(request, timeout=35) as response:
+                        return json.loads(response.read().decode("utf-8"))
+                except HTTPError as error:
+                    error_body = error.read().decode("utf-8", errors="replace")
+                    logger.warning(
+                        "Gemini web search HTTP %s para modelo %s: %s",
+                        error.code, model, error_body[:300]
+                    )
+                    if error.code == 404:
+                        dead.add(model)
+                        continue
+                    if error.code in (500, 502, 503, 504):
+                        continue
+                    return {}
+                except Exception as error:
+                    logger.warning("Gemini web search falló con %s: %s", model, error)
+                    continue
         return {}
 
     try:
@@ -3596,16 +3660,34 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
         lean["contents"] = assistant_gemini_contents((history or [])[-2:], question)
         return lean
 
+    def compact_payload():
+        """Última carta contra el 500 de Gemma: petición mínima, sin historial."""
+        base = APEXQUANT_ASSISTANT_INSTRUCTIONS
+        extra = ""
+        if calendar_context:
+            extra += "\n\n" + calendar_context[:2500]
+        if web_context:
+            extra += "\n\nCONTEXTO WEB RECIENTE:\n" + web_context[:2500]
+        return {
+            "systemInstruction": {"parts": [{"text": base + extra}]},
+            "contents": assistant_gemini_contents([], question),
+            "generationConfig": {
+                "maxOutputTokens": ASSISTANT_MAX_OUTPUT + ASSISTANT_THINKING_HEADROOM
+            }
+        }
+
     def request_gemma():
         import time
         last_error = None
 
         # Intento 1 y 2: Gemma con la petición completa (reintento si es error 5xx/red).
         # Intento 3: Gemma con petición ligera (sin topK/topP, menos historial).
+        # Intento 4: Gemma con petición mínima (sin historial).
         attempts = [
             (GEMMA_MODEL, payload, 90),
             (GEMMA_MODEL, payload, 90),
             (GEMMA_MODEL, lean_payload(), 90),
+            (GEMMA_MODEL, compact_payload(), 60),
         ]
         for index, (model, body_payload, timeout) in enumerate(attempts, start=1):
             try:
@@ -3629,22 +3711,42 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
                 time.sleep(1.5 * index)
 
         # Último recurso: responder con un modelo Gemini para que el usuario nunca se quede sin respuesta.
-        for fallback_model in assistant_model_chain(GEMINI_SEARCH_MODEL):
-            try:
-                logger.warning("Gemma no respondió; usando respaldo %s", fallback_model)
-                fallback_payload = lean_payload()
-                return post_model(fallback_model, fallback_payload, 60)
-            except HTTPError as error:
-                error_body = error.read().decode("utf-8", errors="replace")
-                logger.error(
-                    "Respaldo %s HTTP %s: %s", fallback_model, error.code, error_body[:600]
-                )
-                if error.code in (404, 500, 502, 503, 504):
-                    continue
+        # Ronda 1: modelos configurados. Ronda 2 (tras una pausa): también los modelos
+        # que Google lista como disponibles hoy. Los 404 no se reintentan.
+        dead = set()
+        fatal = False
+        for round_index in range(2):
+            if fatal:
                 break
-            except Exception as error:
-                logger.error("Respaldo %s falló: %s", fallback_model, error)
-                continue
+            if round_index == 0:
+                chain = assistant_model_chain(GEMINI_SEARCH_MODEL)
+            else:
+                time.sleep(3)
+                chain = assistant_model_chain(
+                    GEMINI_SEARCH_MODEL,
+                    assistant_discovered_models(GEMMA_API_KEY)
+                )
+            for fallback_model in chain:
+                if fallback_model in dead:
+                    continue
+                try:
+                    logger.warning("Gemma no respondió; usando respaldo %s", fallback_model)
+                    return post_model(fallback_model, compact_payload(), 60)
+                except HTTPError as error:
+                    error_body = error.read().decode("utf-8", errors="replace")
+                    logger.error(
+                        "Respaldo %s HTTP %s: %s", fallback_model, error.code, error_body[:300]
+                    )
+                    if error.code == 404:
+                        dead.add(fallback_model)
+                        continue
+                    if error.code in (401, 403):
+                        fatal = True
+                        break
+                    continue
+                except Exception as error:
+                    logger.error("Respaldo %s falló: %s", fallback_model, error)
+                    continue
 
         raise last_error or RuntimeError("Gemma HTTP 500: sin respuesta del modelo")
 
@@ -3787,10 +3889,13 @@ async def assistant_text_input(update: Update, context: ContextTypes.DEFAULT_TYP
         notify_bot=context.bot
     )
 
-    history.extend([
-        {"role": "user", "content": question},
-        {"role": "assistant", "content": answer}
-    ])
+    # Los avisos de error (⚠️) no se guardan en el historial: contaminarían
+    # las siguientes consultas con texto que no es una respuesta real.
+    if not str(answer).lstrip().startswith("⚠️"):
+        history.extend([
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": answer}
+        ])
     context.user_data["assistant_history"] = history[-ASSISTANT_MAX_HISTORY:]
 
     try:
