@@ -322,9 +322,226 @@ async def verify_community_access(query):
 # COPYTRADING
 # ============================================================
 
+# ------------------------------------------------------------
+# TÉRMINOS Y CONDICIONES DE COPYTRADING (botón dentro del menú)
+# ------------------------------------------------------------
+# El texto se divide automáticamente en páginas para respetar el límite
+# de Telegram (4096 caracteres por mensaje). Se corta siempre por secciones
+# o párrafos completos, nunca a mitad de frase.
+
+COPY_TERMS_TITLE = "TÉRMINOS Y CONDICIONES — APEXQUANT COPYTRADING"
+
+COPY_TERMS_SECTIONS = [
+    (
+        "1. Nuestra filosofía: la paciencia es parte de la estrategia",
+        [
+            "La metodología de trading de ApexQuant se fundamenta en la paciencia, la disciplina y la selección cuidadosa de oportunidades. Nuestro objetivo no es operar constantemente, sino esperar a que el mercado presente las condiciones necesarias para ejecutar una operación conforme a nuestro análisis y plan de trading.",
+            "En los mercados financieros, estar siempre dentro de una operación no significa estar haciendo las cosas bien. En ocasiones, la mejor decisión es permanecer fuera del mercado y esperar.",
+            "Por este motivo, pueden transcurrir uno o varios días sin que se abra una nueva operación. Esto no significa necesariamente que exista un problema con la estrategia, que el sistema haya dejado de funcionar o que se haya abandonado la actividad de trading. Puede ser, sencillamente, el resultado de respetar las condiciones de entrada establecidas.",
+            "<b>En ApexQuant no operamos por obligación, aburrimiento ni impaciencia. Operamos cuando identificamos una oportunidad que cumple nuestros criterios.</b>",
+        ],
+    ),
+    (
+        "2. ¿Por qué podemos pasar días sin abrir operaciones?",
+        [
+            "El precio de un activo financiero no siempre alcanza las zonas que consideramos óptimas para entrar al mercado.",
+            "Nuestra metodología contempla esperar a que el precio llegue a una zona previamente identificada y que la operación ofrezca una estructura de entrada coherente con nuestro análisis y nuestra gestión del riesgo.",
+            "En ocasiones, el precio puede acercarse mucho a la zona prevista, quedarse a pocos puntos o pips de activar una orden pendiente y, posteriormente, cambiar de dirección sin llegar a ejecutarla.",
+            "Cuando esto ocurre, podemos perder esa oportunidad concreta. Sin embargo, preferimos aceptar que una operación no se haya ejecutado antes que entrar en una zona que no cumple nuestros requisitos.",
+            "No perseguimos el precio ni modificamos arbitrariamente nuestro plan por miedo a quedarnos fuera de un movimiento.",
+            "<b>Una oportunidad que se escapa no constituye una pérdida económica por sí misma. Una entrada ejecutada sin cumplir el plan sí puede exponer el capital a un riesgo innecesario.</b>",
+        ],
+    ),
+    (
+        "3. Las órdenes pendientes y las oportunidades que no se activan",
+        [
+            "Cuando las condiciones del mercado lo permiten, podemos utilizar órdenes pendientes para buscar una entrada en una zona determinada.",
+            "Estas órdenes no garantizan que el precio vaya a alcanzarlas, que se ejecuten ni que el mercado se comporte como esperamos.",
+            "El precio puede llegar a pocos puntos de la orden y marcharse en la dirección prevista sin activar la entrada. También puede activar la orden y moverse posteriormente en nuestra contra.",
+            "Ambas situaciones forman parte de la realidad del trading.",
+            "No perseguiremos automáticamente una operación perdida ni entraremos tarde únicamente porque el mercado haya comenzado a moverse. Cualquier nueva entrada deberá evaluarse conforme a los criterios de la metodología.",
+            "La prioridad es mantener la coherencia del plan, no intentar participar en todos los movimientos del mercado.",
+        ],
+    ),
+    (
+        "4. Gestión del riesgo y protección del capital",
+        [
+            "La gestión del riesgo es un componente esencial de la metodología de ApexQuant.",
+            "Toda operación conlleva la posibilidad de sufrir pérdidas, incluso cuando el análisis se ha realizado correctamente y la entrada cumple los criterios establecidos.",
+            "Por ello, las operaciones deben contar con una planificación del riesgo y con niveles de salida definidos según las condiciones del mercado y la estrategia aplicada.",
+            "El Stop Loss es una herramienta destinada a limitar las pérdidas potenciales, pero no garantiza que la pérdida final sea exactamente igual al importe previsto. En determinadas circunstancias, como deslizamientos de precio, gaps o condiciones excepcionales de liquidez, la ejecución puede producirse a un precio diferente del esperado.",
+            "La metodología no elimina el riesgo ni garantiza la preservación del capital. Su finalidad es gestionar la exposición de forma disciplinada y evitar decisiones impulsivas que puedan comprometer innecesariamente la cuenta.",
+            "<b>Preferimos dejar pasar una oportunidad antes que forzar una entrada que no cumple nuestro plan. Sin embargo, ninguna selección de entradas puede garantizar que una operación no alcance el Stop Loss.</b>",
+        ],
+    ),
+    (
+        "5. Qué debes esperar como usuario de CopyTrading",
+        [
+            "Al participar en ApexQuant CopyTrading, debes comprender que los resultados no se generan de manera uniforme ni necesariamente diaria.",
+            "Puedes encontrar periodos en los que se abran varias operaciones y otros en los que la actividad sea reducida o inexistente durante varios días.",
+            "No prometemos una cantidad mínima de operaciones, una frecuencia determinada de entradas ni beneficios diarios, semanales o mensuales.",
+            "Tampoco garantizamos una rentabilidad específica, una tasa de aciertos concreta o la ausencia de periodos de pérdidas.",
+            "La actividad depende de las condiciones reales del mercado y de la aparición de oportunidades que cumplan los criterios de la metodología.",
+            "El CopyTrading replica operaciones conforme a las condiciones técnicas de la plataforma y de la cuenta vinculada. Pueden existir diferencias entre las operaciones del proveedor y las de la cuenta seguidora debido a factores como la ejecución, los spreads, el deslizamiento, la configuración de la cuenta, la disponibilidad de instrumentos o los requisitos del bróker.",
+            "Por tanto, la frecuencia y los resultados de tu cuenta pueden diferir de los observados en otras cuentas.",
+        ],
+    ),
+    (
+        "6. Por qué no forzamos operaciones para generar actividad",
+        [
+            "Operar más no significa necesariamente ganar más.",
+            "Abrir posiciones únicamente para mantener una actividad constante, recuperar una pérdida rápidamente o satisfacer las expectativas de quienes siguen una estrategia puede llevar a tomar decisiones fuera del plan establecido.",
+            "ApexQuant prioriza la calidad de las oportunidades frente a la cantidad de operaciones.",
+            "No se abrirá una operación únicamente para demostrar actividad, compensar un periodo sin entradas o intentar recuperar una pérdida anterior.",
+            "Cada nueva oportunidad debe evaluarse por sus propios méritos, teniendo en cuenta el contexto del mercado y el riesgo asociado.",
+            "La disciplina también consiste en saber cuándo no operar.",
+        ],
+    ),
+    (
+        "7. Expectativas, paciencia y responsabilidad del seguidor",
+        [
+            "Al elegir CopyTrading, debes valorar si tu horizonte temporal, tus expectativas y tu tolerancia al riesgo son compatibles con una metodología que puede permanecer varios días sin abrir operaciones.",
+            "Esta estrategia puede no ser adecuada para quienes esperan movimientos constantes, operaciones diarias o resultados inmediatos.",
+            "No debes interpretar la ausencia temporal de operaciones como una garantía de que se está preparando una entrada rentable. Tampoco debes considerar que una operación no ejecutada habría producido necesariamente un beneficio.",
+            "El mercado puede comportarse de forma imprevisible y cualquier escenario analizado puede cambiar.",
+            "Antes de vincular tu cuenta, asegúrate de comprender el funcionamiento del servicio, las condiciones de OneRoyal, las comisiones aplicables y los riesgos asociados al trading apalancado.",
+            "Participa únicamente con capital que puedas permitirte perder y evita utilizar dinero destinado a gastos esenciales, obligaciones financieras o necesidades inmediatas.",
+        ],
+    ),
+    (
+        "8. Comisiones y remuneración por resultados",
+        [
+            "La remuneración de ApexQuant por el servicio de CopyTrading se establece conforme a las condiciones configuradas y aceptadas en la plataforma OneRoyal.",
+            "Según las condiciones previstas para el servicio, ApexQuant participa con una comisión del 30 % sobre las ganancias elegibles generadas por el CopyTrading, conforme al mecanismo de cálculo y liquidación de OneRoyal.",
+            "La ausencia de operaciones o de ganancias elegibles no implica que se generen beneficios por el mero hecho de mantener la cuenta vinculada. La aplicación efectiva de cualquier comisión depende de las condiciones de la plataforma y de los términos vigentes del servicio.",
+            "Las condiciones particulares de tu cuenta, así como cualquier otra tarifa, coste de negociación o cargo aplicable por el bróker, deben consultarse directamente con OneRoyal antes de participar.",
+        ],
+    ),
+    (
+        "9. Aceptación de los riesgos",
+        [
+            "El trading de instrumentos financieros, especialmente mediante apalancamiento, implica un riesgo significativo de pérdida de capital.",
+            "Los resultados pasados no garantizan resultados futuros. Una operación rentable no asegura que la siguiente también lo sea, y una metodología disciplinada no elimina las pérdidas ni garantiza una rentabilidad positiva.",
+            "Al utilizar ApexQuant CopyTrading, reconoces que:\n"
+            "• Pueden transcurrir varios días sin nuevas operaciones.\n"
+            "• Algunas oportunidades pueden quedar sin ejecutar porque el precio no alcance la zona prevista.\n"
+            "• Las operaciones ejecutadas pueden cerrar con pérdidas, incluido el Stop Loss.\n"
+            "• No existe garantía de beneficios ni de recuperación de pérdidas.\n"
+            "• Los resultados de tu cuenta pueden diferir de los del proveedor.\n"
+            "• Eres responsable de evaluar tu situación financiera, tu tolerancia al riesgo y la conveniencia de participar.\n"
+            "• Debes revisar y aceptar las condiciones aplicables de OneRoyal y de la plataforma de CopyTrading.",
+            "La decisión de participar debe basarse en una comprensión realista de la metodología y de los riesgos, no en la expectativa de obtener ganancias rápidas o constantes.",
+        ],
+    ),
+    (
+        "10. Nuestro compromiso con la disciplina",
+        [
+            "ApexQuant se compromete a mantener una filosofía de trading basada en la paciencia, la planificación y el respeto por los criterios de entrada y gestión del riesgo de la metodología.",
+            "No prometemos acertar siempre. No prometemos operar todos los días. No prometemos evitar todas las pérdidas.",
+            "Nuestro compromiso es no confundir actividad con calidad, ni impaciencia con oportunidad.",
+            "A veces, el mercado se moverá sin nosotros. Otras veces, una entrada válida terminará en Stop Loss. Ambas posibilidades forman parte de esta actividad.",
+            "Lo importante es no permitir que el miedo a perder una oportunidad o el deseo de recuperar una pérdida dicten nuestras decisiones.",
+            "<b>APEXQUANT — La paciencia no garantiza el éxito, pero operar sin disciplina puede aumentar innecesariamente el riesgo.</b>",
+        ],
+    ),
+]
+
+COPY_TERMS_FOOTER = (
+    "<i>Este documento describe la filosofía y las expectativas generales de la "
+    "metodología. No constituye una garantía de resultados ni sustituye las "
+    "condiciones contractuales de OneRoyal, la documentación oficial del servicio "
+    "o el asesoramiento financiero independiente que puedas necesitar.</i>"
+)
+
+COPY_TERMS_PAGE_LIMIT = 3300
+
+
+def _build_copy_terms_pages(limit=COPY_TERMS_PAGE_LIMIT):
+    """Agrupa secciones/párrafos completos en páginas que caben en un mensaje."""
+    units = []
+    for title, paragraphs in COPY_TERMS_SECTIONS:
+        heading = "<b>" + title + "</b>"
+        section_text = heading + "\n\n" + "\n\n".join(paragraphs)
+        if len(section_text) <= limit:
+            units.append(section_text)
+            continue
+        current = heading
+        for paragraph in paragraphs:
+            candidate = current + "\n\n" + paragraph
+            if len(candidate) > limit and current != heading:
+                units.append(current)
+                current = paragraph
+            else:
+                current = candidate
+        units.append(current)
+    units.append(COPY_TERMS_FOOTER)
+
+    pages = []
+    current = ""
+    for unit in units:
+        candidate = unit if not current else current + "\n\n" + unit
+        if current and len(candidate) > limit:
+            pages.append(current)
+            current = unit
+        else:
+            current = candidate
+    if current:
+        pages.append(current)
+    return pages
+
+
+COPY_TERMS_PAGES = _build_copy_terms_pages()
+
+
+def copy_terms_keyboard(page):
+    total = len(COPY_TERMS_PAGES)
+    nav = []
+    if page > 0:
+        nav.append(InlineKeyboardButton("⬅️ Anterior", callback_data=f"copy_terms_p_{page - 1}"))
+    if page < total - 1:
+        nav.append(InlineKeyboardButton("Siguiente ➡️", callback_data=f"copy_terms_p_{page + 1}"))
+    keyboard = []
+    if nav:
+        keyboard.append(nav)
+    if page == total - 1:
+        keyboard.append([InlineKeyboardButton("✅ He leído los términos", callback_data="copy_terms_read")])
+    keyboard.append([InlineKeyboardButton("🔙 Volver a CopyTrading", callback_data="copytrading")])
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def show_copy_terms(query, page=0):
+    total = len(COPY_TERMS_PAGES)
+    try:
+        page = int(page)
+    except (TypeError, ValueError):
+        page = 0
+    page = max(0, min(page, total - 1))
+    text = (
+        "📜 <b>" + COPY_TERMS_TITLE + "</b>\n"
+        f"<i>Página {page + 1} de {total}</i>\n\n"
+        + COPY_TERMS_PAGES[page]
+    )
+    await query.edit_message_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=copy_terms_keyboard(page)
+    )
+
+
 def copytrading_menu():
 
     keyboard = []
+
+    # --------------------------------------------------------
+    # TÉRMINOS Y CONDICIONES (siempre el primer botón)
+    # --------------------------------------------------------
+
+    keyboard.append([
+        InlineKeyboardButton(
+            "📜 TÉRMINOS Y CONDICIONES",
+            callback_data="copy_terms"
+        )
+    ])
 
     # --------------------------------------------------------
     # CUENTA ONEROYAL
@@ -3315,6 +3532,49 @@ agente puede recibir una parte de las fees de la oferta, incluyendo performance,
 management o registration fees, y que el seguidor debe introducir el número de
 cuenta MT del agente durante la suscripción. Depende de la oferta y configuración.
 
+TÉRMINOS Y CONDICIONES DE COPYTRADING (botón «TÉRMINOS Y CONDICIONES» en el menú CopyTrading)
+Estos términos son oficiales: respóndelos con fidelidad y no prometas nada que excluyan.
+- Filosofía: la metodología se basa en paciencia, disciplina y selección cuidadosa de
+  oportunidades. ApexQuant no opera por obligación, aburrimiento ni impaciencia. Pueden pasar
+  uno o varios días sin abrir operaciones; eso no significa que la estrategia falle o que el
+  sistema se haya detenido.
+- Órdenes pendientes: el precio puede acercarse a pocos pips de la zona y girar sin activar la
+  orden. Prefieren perder esa oportunidad antes que entrar fuera de plan. No persiguen el
+  precio ni entran tarde solo porque el mercado se mueva. Las órdenes pendientes no garantizan
+  que el precio llegue, que se ejecuten ni que el mercado se comporte como se espera.
+- Riesgo: toda operación puede perder, aunque el análisis sea correcto. El Stop Loss limita la
+  pérdida pero no garantiza el importe exacto (deslizamiento, gaps, liquidez excepcional). La
+  metodología no elimina el riesgo ni garantiza preservar el capital.
+- Expectativas del seguidor: no hay cantidad mínima de operaciones, ni frecuencia determinada,
+  ni beneficios diarios/semanales/mensuales, ni rentabilidad, tasa de aciertos o ausencia de
+  pérdidas garantizadas. Los resultados de la cuenta seguidora pueden diferir de los del
+  proveedor (ejecución, spreads, deslizamiento, configuración de la cuenta, instrumentos
+  disponibles, requisitos del bróker).
+- No se fuerzan operaciones para mostrar actividad, compensar un periodo sin entradas ni
+  recuperar una pérdida anterior. Cada oportunidad se evalúa por sus propios méritos.
+- Responsabilidad: el usuario debe valorar su horizonte temporal, expectativas y tolerancia al
+  riesgo; la estrategia puede no ser adecuada para quien espera operaciones diarias o
+  resultados inmediatos. La ausencia de operaciones no garantiza una entrada rentable y una
+  operación no ejecutada no habría sido necesariamente ganadora. Debe revisar las condiciones
+  de OneRoyal, las comisiones y los riesgos del trading apalancado, y participar solo con
+  capital que pueda permitirse perder (nunca dinero para gastos esenciales u obligaciones).
+- Comisiones: ApexQuant participa con el 30% sobre las ganancias elegibles del CopyTrading,
+  según el cálculo y liquidación de OneRoyal. Mantener la cuenta vinculada sin ganancias
+  elegibles no genera beneficios. Otras tarifas o costes del bróker deben consultarse con
+  OneRoyal.
+- El usuario reconoce: pueden pasar días sin operaciones; algunas oportunidades quedan sin
+  ejecutar; las operaciones pueden cerrar en pérdida (incluido el Stop Loss); no hay garantía
+  de beneficios ni de recuperar pérdidas; sus resultados pueden diferir de los del proveedor;
+  es responsable de evaluar su situación financiera; debe revisar y aceptar las condiciones de
+  OneRoyal y de la plataforma de CopyTrading.
+- Los términos no garantizan resultados ni sustituyen las condiciones contractuales de
+  OneRoyal, la documentación oficial ni el asesoramiento financiero independiente.
+Cuando pregunten por frecuencia de operaciones, días sin operar, órdenes que no se activan,
+Stop Loss, resultados, comisiones o expectativas del CopyTrading, responde conforme a estos
+términos. Si algo no está cubierto, dilo y recomienda revisar OneRoyal o contactar al manager
+de ApexQuant. Indica que pueden leer el texto completo en CopyTrading → «TÉRMINOS Y
+CONDICIONES».
+
 TRADING Y PROYECCIONES
 Si preguntan si un activo subirá/bajará, por una entrada, compra/venta, señal o
 proyección:
@@ -4001,6 +4261,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if data.startswith("currency_"):
             await show_currency_events(query, data.replace("currency_", "", 1))
+            return
+        if data == "copy_terms":
+            await show_copy_terms(query, 0)
+            return
+        if data == "copy_terms_read":
+            await show_copy_menu(query)
+            return
+        if data.startswith("copy_terms_p_"):
+            await show_copy_terms(query, data.replace("copy_terms_p_", "", 1))
             return
         if data == "copytrading":
             await show_copy_menu(query)
