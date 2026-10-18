@@ -2243,40 +2243,40 @@ async def show_main(query):
 async def show_referrals(query):
     text = (
         "👥 <b>REFERIDOS — ECOSISTEMA ONEROYAL</b>\n\n"
-        "ApexQuant trabaja la estructura de referidos mediante OneRoyal. "
-        "Las comisiones/rebates, atribución y condiciones dependen del acuerdo "
-        "y de la configuración aprobada por OneRoyal.\n\n"
-        "🏦 <b>1. Registro con OneRoyal</b>\n"
-        "Si quieres registrarte como cliente de OneRoyal mediante ApexQuant, utiliza "
-        "el enlace de registro de ApexQuant para que la relación quede atribuida "
-        "correctamente.\n\n"
-        "📈 <b>2. Seguir a ApexQuant (CopyTrading)</b>\n"
-        "Con tu cuenta de OneRoyal ya registrada, usa el enlace de proveedor de "
-        "CopyTrading para conectarte y seguir la estrategia de ApexQuant.\n\n"
-        "🔗 <b>3. ¿Quieres convertirte en agente adicional?</b>\n"
-        "El proceso se gestiona directamente con el administrador de ApexQuant. "
-        "Pulsa el botón <b>Contactar al manager de ApexQuant</b> que aparece abajo.\n\n"
-        "🪪 <b>4. Qué debes enviar por el canal privado</b>\n"
-        "Indica que solicitas ser agente adicional y facilita tu número de cuenta "
-        "de trading de OneRoyal para que el administrador pueda asociar el enlace "
-        "individual a la cuenta correcta. Envíalo únicamente por ese contacto privado, "
-        "nunca en grupos públicos. <b>Nunca envíes contraseñas ni códigos de acceso.</b>\n\n"
-        "🛠️ <b>5. Creación y configuración manual</b>\n"
-        "El administrador de ApexQuant crea manualmente tu enlace individual y "
-        "configura manualmente la comisión correspondiente en OneRoyal. El bot no "
-        "crea enlaces ni asigna comisiones automáticamente. Una vez que recibas el "
-        "enlace, podrás compartirlo con las personas que invites, conforme a las "
-        "condiciones de OneRoyal.\n\n"
-        "💵 <b>6. Participación del agente</b>\n"
-        "El agente recibe el 20% de la parte de comisión que corresponde a ApexQuant, "
-        "según la configuración manual acordada; no recibe el 20% de las ganancias "
-        "totales del seguidor. Como referencia, si ApexQuant recibe el 30% de una base "
-        "sujeta a comisión, el 20% de esa parte equivale al 6% de esa misma base.\n\n"
+        "Sigue estos pasos en orden. Las comisiones, atribución y condiciones "
+        "dependen de OneRoyal y de la configuración que apruebe.\n\n"
+        "1️⃣ <b>Registro con el link IB de ApexQuant</b>\n"
+        "Regístrate en OneRoyal con el botón <b>Registrarme con OneRoyal</b> y verifica "
+        "tu cuenta. Así quedas como cliente directo de ApexQuant; es la base de todo "
+        "lo demás.\n\n"
+        "2️⃣ <b>Cuenta ECN principal (fondeada)</b>\n"
+        "En el menú <b>Cuentas</b> de OneRoyal crea una cuenta ECN. En ella depositas "
+        "fondos para operar o para el CopyTrading, conectándote con el enlace de "
+        "proveedor (botón <b>Seguir Apex Quant</b>).\n\n"
+        "3️⃣ <b>Solicita ser IB</b>\n"
+        "Si quieres ser agente adicional (Sub-IB) de ApexQuant, solicita a soporte de "
+        "OneRoyal (por e-mail o soporte interno) convertirte también en IB desde tu "
+        "cuenta. Es necesario antes de pedir el enlace de agente.\n\n"
+        "4️⃣ <b>Segunda cuenta ECN (para tus comisiones)</b>\n"
+        "Ya como IB, crea en <b>Cuentas</b> una segunda cuenta ECN, aparte de la "
+        "fondeada que participa en el CopyTrading. En esa segunda cuenta recibirás el "
+        "performance fee de tus clientes directos.\n\n"
+        "5️⃣ <b>Contacta al administrador</b>\n"
+        "Con los pasos anteriores completos, pulsa <b>Contactar al manager de "
+        "ApexQuant</b> y solicita tu enlace de agente (agente adicional/público). "
+        "Envía por ese canal privado el <b>número de tu segunda cuenta ECN</b>. "
+        "El administrador crea manualmente tu enlace, lo asocia a esa cuenta y "
+        "configura la comisión en la campaña; el bot no lo hace automáticamente. "
+        "Nunca envíes contraseñas ni códigos de acceso, ni datos en grupos públicos.\n\n"
+        "💵 <b>Participación del agente</b>\n"
+        "Recibes el 20% de la parte de comisión que corresponde a ApexQuant, según la "
+        "configuración acordada; no es el 20% de las ganancias totales del seguidor. "
+        "Ejemplo: si ApexQuant recibe el 30% de una base sujeta a comisión, tu 20% "
+        "equivale al 6% de esa base.\n\n"
         "ℹ️ <b>Sub-IB y Public Agent:</b> Sub-IB pertenece a la estructura de IB de "
-        "OneRoyal; Public Agent corresponde a ofertas de CopyTrading, donde el "
-        "agente puede recibir la parte de las fees que se configure en la oferta "
-        "y el seguidor puede tener que introducir el número de cuenta MT del agente "
-        "durante la suscripción.\n\n"
+        "OneRoyal; Public Agent corresponde a ofertas de CopyTrading, donde el agente "
+        "puede recibir parte de las fees configuradas en la oferta.\n\n"
+        "❓ <b>¿Dudas?</b> Contacta al administrador de ApexQuant con el botón de abajo.\n\n"
         "⚠️ <b>Importante:</b> la disponibilidad de IB, Sub-IB y Public Agent depende "
         "de aprobación, jurisdicción, términos y configuración de OneRoyal."
     )
@@ -3490,11 +3490,8 @@ La comisión del 30% de ApexQuant en CopyTrading ya está configurada en OneRoya
 Para agentes adicionales, el administrador de ApexQuant configura manualmente un 20%
 sobre la parte de comisión de ApexQuant. No es el 20% de las ganancias totales del
 seguidor. Si ApexQuant recibe el 30% de una base sujeta a comisión, el 20% de esa parte
-equivale al 6% de esa misma base. Explica que la persona interesada debe pulsar
-«Contactar al manager de ApexQuant» en Referidos y enviar allí, de forma privada, su
-número de cuenta de trading para que el administrador cree el enlace individual
-asociado a esa cuenta y configure manualmente la comisión. Nunca solicites contraseñas,
-códigos de acceso ni datos de autenticación. El bot no hace esta configuración.
+equivale al 6% de esa misma base. Los pasos completos para ser agente adicional están
+en la sección «PASOS PARA SER AGENTE ADICIONAL (SUB-IB)» más abajo.
 Sobre OneRoyal, distingue la entidad regulada y jurisdicción del cliente: el grupo menciona
 ASIC, CySEC, VFSC y FSA de San Vicente y las Granadinas para entidades diferentes. Nunca
 digas que todas las licencias protegen a todos los clientes.
@@ -3512,13 +3509,33 @@ ONEROYAL — REFERIDOS, IB, SUB-IB Y PUBLIC AGENT
 La información oficial consultada indica que los IB pueden usar enlaces
 personalizados, seguir clientes y comisiones mediante herramientas del portal,
 y que existe una estructura Master IB/Sub-IB sujeta a aprobación y condiciones.
-IMPORTANTE PARA APEXQUANT: si alguien quiere convertirse en agente adicional,
-indícale que use el botón «Contactar al manager de ApexQuant» del menú Referidos.
-Debe enviar por ese contacto privado su número de cuenta de trading de OneRoyal y
-solicitar el alta como agente. El administrador crea manualmente el enlace individual
-asociado a esa cuenta y configura manualmente la comisión del agente en OneRoyal.
-El bot no crea enlaces ni asigna comisiones. Nunca pidas contraseñas, códigos de
-acceso ni otros datos de autenticación. No inventes ni fabriques URLs de agentes.
+PASOS PARA SER AGENTE ADICIONAL (SUB-IB) DE APEXQUANT (menú Referidos). Explícalos en
+este orden cuando alguien pregunte; son confirmados por el soporte de OneRoyal:
+1) Registrarse en OneRoyal con el enlace IB de ApexQuant (botón «Registrarme con
+   OneRoyal») y verificar la cuenta. Así quedan como clientes directos de ApexQuant.
+   Siempre lo primero es estar registrado como directo de ApexQuant.
+2) En el menú Cuentas de OneRoyal, crear una cuenta ECN principal (fondeada). Ahí
+   depositan fondos para operar o para el CopyTrading, conectándose con el enlace de
+   proveedor de ApexQuant (botón «Seguir Apex Quant»). Un cliente que solo quiere copiar
+   la estrategia únicamente necesita los pasos 1 y 2: se registra bajo el link de
+   referido, se verifica, crea la cuenta, deposita y se une al copy.
+3) Solicitar convertirse también en IB, contactando a soporte de OneRoyal por e-mail o
+   por el soporte interno. Es necesario antes de pedir el enlace de agente adicional.
+4) Ya como IB, crear en el mismo menú Cuentas una segunda cuenta ECN, aparte de la
+   cuenta fondeada que participa en el CopyTrading. Esa segunda cuenta es la que recibe
+   el performance fee de sus clientes directos.
+5) Contactar al administrador de ApexQuant con el botón «Contactar al manager de
+   ApexQuant» del menú Referidos, con los pasos anteriores completos, para solicitar su
+   enlace de agente (adicional/público). Deben enviar de forma privada el número de la
+   segunda cuenta ECN. El administrador crea manualmente el enlace, lo asocia a esa
+   cuenta, y coloca ese número en la configuración de la campaña para que el agente
+   reciba la comisión por sus clientes directos. El porcentaje que se reparte al agente
+   se estipula en el enlace que el administrador le crea.
+El bot no crea enlaces ni asigna comisiones. Nunca pidas contraseñas, códigos de acceso
+ni otros datos de autenticación. No inventes ni fabriques URLs de agentes.
+Si la pregunta sobre referidos, IB, Sub-IB o agentes no queda resuelta con esta
+información, o el usuario sigue con dudas, sugiere contactar al administrador de
+ApexQuant con el botón «Contactar al manager de ApexQuant» del menú Referidos.
 
 DIFERENCIA IMPORTANTE: Sub-IB pertenece a la estructura de partners/IB de
 OneRoyal y recibe su propio enlace de referidos cuando ApexQuant lo crea para él.
