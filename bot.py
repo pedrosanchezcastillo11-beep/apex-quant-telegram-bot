@@ -3611,7 +3611,130 @@ algo, dilo claramente.
 ESTILO
 Sé útil, directo y profesional. Usa secciones cortas y emojis con moderación.
 Incluye una advertencia clara cuando la pregunta implique una decisión financiera.
+
+FORMATO DE RESPUESTA (obligatorio)
+- Entrega UNA sola respuesta final. Nunca ofrezcas "Opción 1", "Opción 2" ni
+  versiones alternativas, ni expliques cómo redactaste la respuesta.
+- Telegram no muestra fórmulas. No uses LaTeX, ni símbolos $...$, ni comandos con
+  barra invertida (\\uparrow, \\downarrow, \\rightarrow). Para flechas usa ⬆️ ⬇️ ➡️.
+- Para destacar títulos o palabras clave usa **negrita** (doble asterisco).
+  No uses asteriscos sueltos para cursiva, ni títulos con #, ni tablas, ni líneas ---.
+- Para listas usa viñetas con guion "- " o numeración "1.", una idea por línea.
+- Separa las secciones con una línea en blanco y mantén los párrafos cortos.
 """
+
+# ------------------------------------------------------------
+# LIMPIEZA Y FORMATO DE LAS RESPUESTAS DEL ASISTENTE
+# ------------------------------------------------------------
+# Gemma escribe en Markdown y a veces en LaTeX (ej.: $\uparrow$).
+# Telegram no entiende ninguno de los dos, así que aquí se convierten
+# las flechas/símbolos en emojis y el Markdown en HTML real de Telegram.
+# Si Telegram rechazara el formato, se reenvía en texto plano.
+
+ASSISTANT_LATEX_SYMBOLS = {
+    "uparrow": "⬆️", "Uparrow": "⬆️", "upwardarrow": "⬆️",
+    "downarrow": "⬇️", "Downarrow": "⬇️",
+    "rightarrow": "➡️", "Rightarrow": "➡️", "to": "➡️", "longrightarrow": "➡️",
+    "leftarrow": "⬅️", "Leftarrow": "⬅️",
+    "leftrightarrow": "↔️", "Leftrightarrow": "↔️",
+    "approx": "≈", "times": "×", "cdot": "·", "pm": "±",
+    "geq": "≥", "ge": "≥", "leq": "≤", "le": "≤", "neq": "≠", "ne": "≠",
+    "Delta": "Δ", "delta": "Δ", "%": "%", "&": "&", "_": "_", "#": "#",
+}
+
+def assistant_clean_latex(text):
+    """Convierte LaTeX básico ($\\uparrow$, \\rightarrow...) en símbolos/emojis."""
+    def convert_commands(chunk):
+        chunk = re.sub(r"\\(?:text|mathrm|mathbf|textbf|mathit)\s*\{([^{}]*)\}", r"\1", chunk)
+        chunk = re.sub(
+            r"\\([A-Za-z]+|[%&_#])",
+            lambda m: ASSISTANT_LATEX_SYMBOLS.get(m.group(1), m.group(1)),
+            chunk
+        )
+        return chunk.replace("{", "").replace("}", "").strip()
+
+    # Fórmulas entre $...$ que contienen comandos LaTeX (los precios como $1.25 no se tocan).
+    text = re.sub(
+        r"\$\s*([^$\n]*?\\[A-Za-z%&_#][^$\n]*?)\s*\$",
+        lambda m: convert_commands(m.group(1)),
+        text
+    )
+    # Comandos LaTeX que hayan quedado sueltos fuera de $...$.
+    text = re.sub(
+        r"\\(uparrow|Uparrow|downarrow|Downarrow|rightarrow|Rightarrow|leftarrow|Leftarrow|leftrightarrow|approx|times|geq|leq|neq|pm)\b",
+        lambda m: ASSISTANT_LATEX_SYMBOLS.get(m.group(1), m.group(1)),
+        text
+    )
+    return text
+
+def assistant_prepare_text(text):
+    """Limpia la salida cruda del modelo (sigue siendo Markdown, sin HTML)."""
+    text = str(text or "").replace("\r\n", "\n")
+
+    # El modelo a veces entrega varias versiones ("Opción 1 / Opción 2"): se queda solo la primera.
+    option2 = re.search(r"(?im)^[^\w\n]*(?:#+\s*)?(?:\*\*)?opci[oó]n\s*2\b", text)
+    if option2:
+        text = text[:option2.start()]
+    text = re.sub(r"(?im)^[^\w\n]*(?:#+\s*)?(?:\*\*)?opci[oó]n\s*1\b[^\n]*\n?", "", text)
+
+    text = assistant_clean_latex(text)
+
+    # ***texto*** (negrita + cursiva) -> **texto**, para no generar etiquetas mal anidadas.
+    text = re.sub(r"\*\*\*([^\n*]+?)\*\*\*", r"**\1**", text)
+
+    # Líneas separadoras (---, ***, ___) fuera.
+    text = re.sub(r"(?m)^\s*(?:-{3,}|\*{3,}|_{3,})\s*$", "", text)
+    # Títulos "### Texto" -> **Texto**
+    text = re.sub(
+        r"(?m)^\s{0,3}#{1,6}\s*(.+?)\s*#*\s*$",
+        lambda m: "**" + m.group(1).replace("**", "").strip() + "**",
+        text
+    )
+    # Viñetas "- ", "* ", "+ " -> "• "
+    text = re.sub(r"(?m)^(\s*)[-*+]\s+", r"\1• ", text)
+    # Espacios y saltos de línea sobrantes.
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+def assistant_truncate(text, limit=3900):
+    text = str(text)
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    boundary = max(cut.rfind("\n\n"), cut.rfind("\n"))
+    if boundary > limit * 0.6:
+        cut = cut[:boundary]
+    return cut.rstrip() + "…"
+
+ASSISTANT_ALLOWED_TAGS = re.compile(r"</?(?:b|i|u|code|pre)>", re.IGNORECASE)
+
+def assistant_markdown_to_html(text):
+    """Markdown del modelo -> HTML de Telegram (negrita real, cursiva, código)."""
+    text = str(text)
+    pieces = []
+    last = 0
+    # Las etiquetas permitidas (<b>, <code>...) de los avisos del bot se respetan.
+    for tag in ASSISTANT_ALLOWED_TAGS.finditer(text):
+        pieces.append(escape(text[last:tag.start()], quote=False))
+        pieces.append(tag.group(0).lower())
+        last = tag.end()
+    pieces.append(escape(text[last:], quote=False))
+    out = "".join(pieces)
+
+    out = re.sub(r"\*\*([^\n]+?)\*\*", r"<b>\1</b>", out)
+    out = re.sub(r"(?<![\*\w])\*(?!\s)([^\*\n]+?)(?<!\s)\*(?![\*\w])", r"<i>\1</i>", out)
+    out = re.sub(r"`([^`\n]+)`", r"<code>\1</code>", out)
+    out = out.replace("**", "")  # asteriscos dobles que hayan quedado sin pareja
+    return out
+
+def assistant_markdown_to_plain(text):
+    """Versión sin ningún formato, para el respaldo automático."""
+    out = ASSISTANT_ALLOWED_TAGS.sub("", str(text))
+    out = out.replace("**", "")
+    out = re.sub(r"(?<![\*\w])\*(?!\s)([^\*\n]+?)(?<!\s)\*(?![\*\w])", r"\1", out)
+    out = re.sub(r"`([^`\n]+)`", r"\1", out)
+    return out
 
 def assistant_keyboard():
     return InlineKeyboardMarkup([
@@ -4031,6 +4154,8 @@ async def call_apexquant_assistant(question, history, calendar_context="", web_c
         loop = asyncio.get_running_loop()
         data = await loop.run_in_executor(None, request_gemma)
         answer = assistant_extract_output(data)
+        if answer:
+            answer = assistant_prepare_text(answer)
         if not answer:
             try:
                 cand = (data.get("candidates") or [{}])[0] if isinstance(data, dict) else {}
@@ -4175,19 +4300,21 @@ async def assistant_text_input(update: Update, context: ContextTypes.DEFAULT_TYP
         ])
     context.user_data["assistant_history"] = history[-ASSISTANT_MAX_HISTORY:]
 
+    raw_answer = assistant_truncate(answer, 3900)
     try:
+        # Markdown del modelo -> negrita/cursiva reales de Telegram (HTML).
         await update.message.reply_text(
-            answer[:3900],
+            assistant_markdown_to_html(raw_answer),
             parse_mode="HTML",
             disable_web_page_preview=True,
             reply_markup=assistant_keyboard()
         )
     except Exception as send_error:
-        # Si el modelo devuelve HTML inválido (por ejemplo "<" o "&" sueltos),
-        # se reenvía como texto plano para que el usuario siempre reciba respuesta.
-        logger.warning("Respuesta del asistente con HTML inválido, se reenvía en texto plano: %s", send_error)
+        # Respaldo automático: si Telegram rechaza el formato, se reenvía como
+        # texto plano limpio para que el usuario siempre reciba respuesta.
+        logger.warning("Formato de la respuesta del asistente rechazado, se reenvía en texto plano: %s", send_error)
         await update.message.reply_text(
-            answer[:3900],
+            assistant_markdown_to_plain(raw_answer),
             disable_web_page_preview=True,
             reply_markup=assistant_keyboard()
         )
