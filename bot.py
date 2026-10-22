@@ -7,6 +7,7 @@ import asyncio
 import json
 import io
 import hashlib
+import time
 import xml.etree.ElementTree as ET
 from decimal import Decimal, InvalidOperation
 from html import escape
@@ -14,8 +15,17 @@ from urllib.request import Request, urlopen
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from datetime import datetime, timedelta, date, timezone
+try:
+    from zoneinfo import ZoneInfo
+except Exception:  # pragma: no cover
+    ZoneInfo = None
 
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+try:
+    from telegram.error import BadRequest, Forbidden, RetryAfter
+except ImportError:  # versiones antiguas de python-telegram-bot
+    from telegram.error import BadRequest, RetryAfter
+    from telegram.error import Unauthorized as Forbidden
 from telegram.ext import (
     Application,
     CommandHandler,
@@ -111,6 +121,60 @@ ACADEMY_NAME = "Academia Apex Quant"
 FINANCE_CALENDAR_BASE = (
     "https://www.financecalendar.com/wp-json/fc/v1"
 )
+
+# Clave gratuita opcional de FinanceCalendar: sube el límite de 2.000 a 10.000
+# consultas por día. Se configura en Deployka como FINANCECALENDAR_API_KEY.
+FINANCE_CALENDAR_API_KEY = _clean_key(os.getenv("FINANCECALENDAR_API_KEY"))
+
+# Zona horaria en la que el bot muestra las horas del calendario (formato IANA:
+# America/Bogota, America/Mexico_City, Europe/Madrid, etc.). Se configura en
+# Deployka como CALENDAR_TZ. Si no existe, se usa UTC.
+CALENDAR_TZ_NAME = (os.getenv("CALENDAR_TZ", "UTC") or "UTC").strip()
+
+# Los eventos se guardan 2 minutos en memoria para no gastar el límite diario
+# de consultas de FinanceCalendar.
+CALENDAR_CACHE_SECONDS = 120
+CALENDAR_PAGE_SIZE = 8
+
+# Sólo se piden eventos económicos y de bancos centrales. El feed también trae
+# eventos cripto (vesting, votaciones DAO...) sin divisa ni impacto que no
+# pertenecen a este calendario.
+CALENDAR_CATEGORIES = ("economic-indicators", "central-banks-monetary-policy")
+
+# Las subastas del Tesoro de EE. UU. se publican como impacto "medio" y llenan
+# la lista. Se ocultan salvo que CALENDAR_SHOW_AUCTIONS=true.
+CALENDAR_SHOW_AUCTIONS = os.getenv(
+    "CALENDAR_SHOW_AUCTIONS", "false"
+).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _resolve_calendar_tz(name):
+    if ZoneInfo is None:
+        logger.warning("zoneinfo no disponible: las horas del calendario se muestran en UTC.")
+        return timezone.utc, "UTC"
+    try:
+        return ZoneInfo(name), name
+    except Exception as error:
+        logger.warning(
+            "CALENDAR_TZ=%r no es válida o falta el paquete tzdata (%s). "
+            "Se usa UTC. Si la zona es correcta, añade 'tzdata' a requirements.txt.",
+            name, error
+        )
+        return timezone.utc, "UTC"
+
+
+CALENDAR_TZ, CALENDAR_TZ_LABEL = _resolve_calendar_tz(CALENDAR_TZ_NAME)
+
+CALENDAR_CURRENCY_FLAGS = {
+    "USD": "🇺🇸",
+    "EUR": "🇪🇺",
+    "GBP": "🇬🇧",
+    "JPY": "🇯🇵",
+    "CHF": "🇨🇭",
+    "CAD": "🇨🇦",
+    "AUD": "🇦🇺",
+    "NZD": "🇳🇿"
+}
 
 # ============================================================
 # COMUNIDAD APEXQUANT
@@ -855,19 +919,25 @@ async def show_markets(query):
 # CALENDARIO ECONÓMICO
 # ============================================================
 
+WEEKDAYS_ES = ("lun", "mar", "mié", "jue", "vie", "sáb", "dom")
+
+
+def date_label_es(day):
+    return f"{WEEKDAYS_ES[day.weekday()]} {day:%d/%m}"
+
+
 def today_date():
-    return date.today()
+    # Fecha de hoy en la zona horaria configurada (no la del servidor).
+    return datetime.now(CALENDAR_TZ).date()
 
 
 def tomorrow_date():
-    return date.today() + timedelta(days=1)
+    return today_date() + timedelta(days=1)
 
 
 def week_dates():
-    today = date.today()
-
-    start = today
-    end = today + timedelta(days=6)
+    start = today_date()
+    end = start + timedelta(days=6)
 
     return start, end
 
@@ -893,8 +963,16 @@ async def calendar_menu(query):
         ],
         [
             InlineKeyboardButton(
-                "🔴 Alto impacto",
+                "🔴 Alto",
                 callback_data="calendar_high"
+            ),
+            InlineKeyboardButton(
+                "🟠 Medio",
+                callback_data="calendar_medium"
+            ),
+            InlineKeyboardButton(
+                "🟢 Bajo",
+                callback_data="calendar_low"
             )
         ],
         [
@@ -950,82 +1028,252 @@ async def show_calendar(query):
 # OBTENER EVENTOS DEL CALENDARIO
 # ============================================================
 
-async def fetch_calendar_events(start_date, end_date=None):
+CALENDAR_FETCH_CACHE = {}
+
+
+def _parse_iso_datetime(value):
+    if not value:
+        return None
+
+    try:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+
+    return parsed
+
+
+def event_datetime_utc(event):
+    """Instante exacto de publicación en UTC, o None si el evento sólo tiene fecha."""
+
+    if not isinstance(event, dict):
+        return None
+
+    parsed = _parse_iso_datetime(
+        event.get("release_at_utc") or event.get("time_utc")
+    )
+
+    return parsed.astimezone(timezone.utc) if parsed else None
+
+
+def event_local_date(event):
+    """Fecha del evento en la zona horaria del bot."""
+
+    moment = event_datetime_utc(event)
+
+    if moment:
+        return moment.astimezone(CALENDAR_TZ).date()
+
+    raw = str(event.get("date") or "")[:10]
+
+    try:
+        return date.fromisoformat(raw)
+    except ValueError:
+        return None
+
+
+def event_sort_key(event):
+    moment = event_datetime_utc(event)
+
+    if moment:
+        local = moment.astimezone(CALENDAR_TZ).replace(tzinfo=None)
+    else:
+        day = event_local_date(event) or date.max
+        local = datetime.combine(day, datetime.min.time())
+
+    return (local, str(event.get("name") or ""))
+
+
+def is_economic_event(event):
+    """Descarta eventos cripto, subastas (opcional) y filas sin datos útiles."""
+
+    if not isinstance(event, dict):
+        return False
+
+    category = str(event.get("category") or "").lower()
+
+    if "crypto" in category or category == "market-holidays":
+        return False
+
+    series_code = str(event.get("series_code") or "").lower()
+    impact = str(event.get("impact") or "").lower()
+
+    if (
+        not CALENDAR_SHOW_AUCTIONS
+        and series_code.startswith("us-treasury")
+        and impact != "high"
+    ):
+        return False
+
+    if category in CALENDAR_CATEGORIES:
+        return True
+
+    # Sin categoría: sólo se acepta si parece un evento económico real.
+    return impact in ("high", "medium", "low") and bool(event_currency(event))
+
+
+def _fc_request(params):
+    url = FINANCE_CALENDAR_BASE + "/calendar?" + urlencode(params)
+
+    headers = {
+        "User-Agent": "Mozilla/5.0 ApexQuantBot/1.0",
+        "Accept": "application/json"
+    }
+
+    if FINANCE_CALENDAR_API_KEY:
+        headers["X-API-Key"] = FINANCE_CALENDAR_API_KEY
+
+    request = Request(url, headers=headers)
+
+    with urlopen(request, timeout=20) as response:
+        return json.loads(response.read().decode("utf-8"))
+
+
+def _fc_collect(params):
+    """Descarga todas las páginas de una consulta (máx. 500 filas por página)."""
+
+    rows = []
+    offset = 0
+
+    for _ in range(6):
+        data = _fc_request(dict(params, limit=500, offset=offset))
+
+        if isinstance(data, dict):
+            page = data.get("events")
+            if not isinstance(page, list):
+                page = data.get("data") if isinstance(data.get("data"), list) else []
+            total = data.get("total")
+        elif isinstance(data, list):
+            page = data
+            total = None
+        else:
+            break
+
+        rows.extend(page)
+        offset += len(page)
+
+        try:
+            total = int(total) if total is not None else None
+        except (TypeError, ValueError):
+            total = None
+
+        if not page or total is None or offset >= total:
+            break
+
+    return rows
+
+
+def _fc_load(start_date, end_date, impact=None):
+    base = {
+        "from": start_date.strftime("%Y-%m-%d"),
+        "to": end_date.strftime("%Y-%m-%d"),
+        "tz": CALENDAR_TZ_LABEL
+    }
+
+    if impact:
+        base["impact"] = impact
+
+    rows = []
+
+    try:
+        for category in CALENDAR_CATEGORIES:
+            rows.extend(_fc_collect(dict(base, category=category)))
+    except Exception as error:
+        logger.warning(
+            "FinanceCalendar: falló la consulta por categoría (%s). "
+            "Se reintenta sin filtro y se limpian los eventos aquí.",
+            error
+        )
+        rows = _fc_collect(base)
+
+    unique = []
+    seen = set()
+
+    for event in rows:
+        if not is_economic_event(event):
+            continue
+
+        key = str(event.get("id") or "") or "|".join(
+            str(event.get(k) or "") for k in ("name", "date", "time_utc")
+        )
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        unique.append(event)
+
+    return unique
+
+
+def _fc_load_with_retry(start_date, end_date, impact=None):
+    last_error = None
+
+    for attempt in range(2):
+        try:
+            return _fc_load(start_date, end_date, impact)
+        except Exception as error:
+            last_error = error
+            if attempt == 0:
+                time.sleep(1.0)
+
+    raise last_error
+
+
+async def fetch_calendar_events(start_date, end_date=None, impact=None):
+    """Eventos económicos entre dos fechas (en la zona horaria del bot).
+
+    Devuelve una lista ordenada por hora, o None si FinanceCalendar no responde.
+    """
 
     if end_date is None:
         end_date = start_date
 
-    params = {
-        "from": start_date.strftime("%Y-%m-%d"),
-        "to": end_date.strftime("%Y-%m-%d"),
-        "limit": 500
-    }
+    cache_key = (start_date.isoformat(), end_date.isoformat(), impact or "")
+    cached = CALENDAR_FETCH_CACHE.get(cache_key)
 
-    url = (
-        FINANCE_CALENDAR_BASE
-        + "/calendar?"
-        + urlencode(params)
-    )
+    if cached and time.monotonic() - cached[0] < CALENDAR_CACHE_SECONDS:
+        return list(cached[1])
 
-    def load_data():
-
-        request = Request(
-            url,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 "
-                    "ApexQuantBot/1.0"
-                )
-            }
-        )
-
-        with urlopen(
-            request,
-            timeout=20
-        ) as response:
-
-            raw_data = response.read()
-
-            return json.loads(
-                raw_data.decode("utf-8")
-            )
+    loop = asyncio.get_running_loop()
 
     try:
-
-        loop = asyncio.get_running_loop()
-
-        data = await loop.run_in_executor(
+        # Se pide un día de margen a cada lado porque la API filtra por la fecha
+        # local de quien publica y aquí se necesita la fecha en la zona del bot.
+        rows = await loop.run_in_executor(
             None,
-            load_data
+            _fc_load_with_retry,
+            start_date - timedelta(days=1),
+            end_date + timedelta(days=1),
+            impact
         )
-
-        if isinstance(data, dict):
-
-            if isinstance(
-                data.get("events"),
-                list
-            ):
-                return data["events"]
-
-            if isinstance(
-                data.get("data"),
-                list
-            ):
-                return data["data"]
-
-        if isinstance(data, list):
-            return data
-
-        return []
-
+    except HTTPError as error:
+        logger.error("Error obteniendo calendario: HTTP %s", error.code)
+        return list(cached[1]) if cached else None
     except Exception as error:
+        logger.error("Error obteniendo calendario: %s", error)
+        return list(cached[1]) if cached else None
 
-        logger.error(
-            "Error obteniendo calendario: %s",
-            error
-        )
+    events = []
 
-        return None
+    for event in rows:
+        day = event_local_date(event)
+
+        if day and start_date <= day <= end_date:
+            events.append(event)
+
+    events.sort(key=event_sort_key)
+
+    CALENDAR_FETCH_CACHE[cache_key] = (time.monotonic(), events)
+
+    if len(CALENDAR_FETCH_CACHE) > 40:
+        oldest = min(CALENDAR_FETCH_CACHE, key=lambda k: CALENDAR_FETCH_CACHE[k][0])
+        CALENDAR_FETCH_CACHE.pop(oldest, None)
+
+    return list(events)
 
 
 # ============================================================
@@ -1110,7 +1358,7 @@ def event_currency(event):
     country_map = {
         "US": "USD", "USA": "USD", "UNITED STATES": "USD",
         "EU": "EUR", "EUROZONE": "EUR", "EURO AREA": "EUR",
-        "GERMANY": "EUR", "FRANCE": "EUR", "ITALY": "EUR",
+        "GERMANY": "EUR", "DE": "EUR", "FRANCE": "EUR", "ITALY": "EUR",
         "SPAIN": "EUR", "NETHERLANDS": "EUR",
         "GB": "GBP", "UK": "GBP", "UNITED KINGDOM": "GBP",
         "JAPAN": "JPY", "JP": "JPY",
@@ -1677,12 +1925,30 @@ async def show_calendar_context(query, event_key):
 # FORMATEAR EVENTO
 # ============================================================
 
+def event_time_text(event):
+
+    moment = event_datetime_utc(event)
+
+    if moment:
+        local = moment.astimezone(CALENDAR_TZ)
+        return f"{date_label_es(local.date())} · {local:%H:%M}"
+
+    day = event_local_date(event)
+
+    if day:
+        return f"{date_label_es(day)} · hora por confirmar"
+
+    return "Hora no disponible"
+
+
 def format_calendar_event(event):
 
-    name = event_value(event, "name", "title", "event")
+    name = str(event_value(event, "name", "title", "event") or "Evento económico")
+    if len(name) > 110:
+        name = name[:107] + "..."
+
     currency = event_currency(event)
     impact = event_value(event, "impact", "importance")
-    event_date = event_value(event, "date", "datetime", "time_utc", "time_et")
     consensus = event_value(event, "consensus", "forecast", "expected")
     prior = event_value(event, "prior", "previous")
     actual = event_value(event, "actual")
@@ -1699,7 +1965,12 @@ def format_calendar_event(event):
         impact_label = str(impact) if impact else "N/D"
 
     currency_text = str(currency).upper() if currency else "N/D"
-    event_date_text = str(event_date).replace("T", " ") if event_date else "Hora no disponible"
+
+    status = str(event.get("status") or "").lower()
+    status_text = (
+        " · 🗓️ fecha estimada"
+        if status in ("estimated", "rescheduled") else ""
+    )
 
     result_lines = []
     if consensus:
@@ -1713,8 +1984,8 @@ def format_calendar_event(event):
 
     return (
         f"{impact_icon} <b>{escape(impact_label)}</b> | <b>{escape(currency_text)}</b>\n"
-        f"📰 {escape(str(name or 'Evento económico'))}\n"
-        f"🕒 {escape(event_date_text)}"
+        f"📰 {escape(name)}\n"
+        f"🕒 {escape(event_time_text(event))}{status_text}"
         f"{result_text}"
     )
 
@@ -1723,18 +1994,36 @@ def format_calendar_event(event):
 # MOSTRAR EVENTOS
 # ============================================================
 
+async def _calendar_edit(query, text, keyboard):
+    try:
+        await query.edit_message_text(
+            text,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+    except BadRequest as error:
+        # Pulsar "Actualizar" sin cambios en los datos no es un error.
+        if "not modified" in str(error).lower():
+            return
+        raise
+
+
 async def show_events(
     query,
     start_date,
     end_date=None,
     title="📅 CALENDARIO",
-    filter_high=False,
-    currency=None
+    filter_impact=None,
+    currency=None,
+    page=0,
+    mode=None
 ):
 
     events = await fetch_calendar_events(
         start_date,
-        end_date
+        end_date,
+        impact=filter_impact
     )
 
     if events is None:
@@ -1751,7 +2040,9 @@ async def show_events(
             [
                 InlineKeyboardButton(
                     "🔄 Actualizar",
-                    callback_data="calendar"
+                    callback_data=(
+                        f"calpage_{mode}_{page}" if mode else "calendar"
+                    )
                 )
             ],
             [
@@ -1762,13 +2053,7 @@ async def show_events(
             ]
         ]
 
-        await query.edit_message_text(
-            text,
-            parse_mode="HTML",
-            reply_markup=InlineKeyboardMarkup(
-                keyboard
-            )
-        )
+        await _calendar_edit(query, text, keyboard)
 
         return
 
@@ -1779,112 +2064,119 @@ async def show_events(
         if not isinstance(event, dict):
             continue
 
-        if filter_high:
-
+        if filter_impact:
             impact = str(
-                event_value(
-                    event,
-                    "impact",
-                    "importance"
-                )
+                event_value(event, "impact", "importance")
             ).lower()
 
-            if impact != "high":
+            if impact != filter_impact:
                 continue
 
-        if currency:
-
-            event_currency_code = event_currency(event)
-
-            if event_currency_code != currency.upper():
-                continue
+        if currency and event_currency(event) != currency.upper():
+            continue
 
         filtered_events.append(event)
 
-    # --------------------------------------------------------
-    # ORDENAR
-    # --------------------------------------------------------
+    # Los eventos ya vienen ordenados por hora local desde fetch_calendar_events.
 
-    filtered_events.sort(
-        key=lambda event: str(
-            event_value(
-                event,
-                "time_utc",
-                "datetime",
-                "date"
-            )
-        )
+    total = len(filtered_events)
+    pages = max(1, (total + CALENDAR_PAGE_SIZE - 1) // CALENDAR_PAGE_SIZE)
+
+    try:
+        page = int(page)
+    except (TypeError, ValueError):
+        page = 0
+
+    page = max(0, min(page, pages - 1))
+
+    page_events = filtered_events[
+        page * CALENDAR_PAGE_SIZE:(page + 1) * CALENDAR_PAGE_SIZE
+    ]
+
+    header = (
+        f"{title}\n"
+        f"🕒 <i>Horas en {escape(CALENDAR_TZ_LABEL)}</i>"
     )
 
-    # --------------------------------------------------------
-    # LÍMITE VISUAL Y BOTONES DE CONTEXTO
-    # --------------------------------------------------------
+    footer = (
+        '\n\nℹ️ Fuente: <a href="https://www.financecalendar.com">'
+        "FinanceCalendar.com</a>"
+    )
 
-    # Telegram limita los mensajes a 4096 caracteres.
-    # Mostramos hasta 10 eventos y, además, reducimos la lista
-    # si el texto se acerca al límite.
-    selected_events = []
-    current_length = len(str(title)) + 100
+    keyboard = []
 
-    for event in filtered_events:
-        if len(selected_events) >= 10:
-            break
-
-        formatted = format_calendar_event(event)
-        projected = current_length + len(formatted) + 2
-
-        if projected > 3300 and selected_events:
-            break
-
-        selected_events.append((event, formatted))
-        current_length = projected
-
-    if not selected_events:
+    if not page_events:
         text = (
-            f"{title}\n\n"
+            f"{header}\n\n"
             "📭 <b>No hay eventos disponibles "
             "para los filtros seleccionados.</b>\n\n"
             "Puedes actualizar o consultar otra fecha/divisa."
+            f"{footer}"
         )
-        keyboard = []
     else:
         event_texts = []
-        keyboard = []
 
-        for event, formatted in selected_events:
+        for event in page_events:
             event_key = cache_calendar_event(event)
-            event_texts.append(formatted)
+            event_texts.append(format_calendar_event(event))
 
-            short_name = str(event_value(event, "name", "title", "event") or "Evento")
-            if len(short_name) > 34:
-                short_name = short_name[:31] + "..."
+            short_name = str(
+                event_value(event, "name", "title", "event") or "Evento"
+            )
+            if len(short_name) > 30:
+                short_name = short_name[:27] + "..."
+
+            event_cur = event_currency(event)
+            prefix = f"{event_cur} · " if event_cur else ""
 
             keyboard.append([
                 InlineKeyboardButton(
-                    f"📚 {short_name}",
+                    f"📚 {prefix}{short_name}",
                     callback_data=f"calendar_context_{event_key}"
                 )
             ])
 
-        extra_count = len(filtered_events) - len(selected_events)
-        extra_text = (
-            f"\n\nℹ️ Hay {extra_count} eventos adicionales. "
-            "Usa filtros de fecha o divisa para consultarlos."
-            if extra_count > 0 else ""
+        page_info = (
+            f"\n\n📄 Página {page + 1}/{pages} · {total} eventos"
+            if pages > 1 else f"\n\n📄 {total} eventos"
         )
 
         text = (
-            f"{title}\n\n"
+            f"{header}\n\n"
             + "\n\n".join(event_texts)
-            + extra_text
-            + "\n\nℹ️ Fuente: FinanceCalendar.com"
+            + page_info
+            + footer
         )
+
+    if mode and pages > 1:
+        nav = []
+
+        if page > 0:
+            nav.append(
+                InlineKeyboardButton(
+                    "⬅️ Anterior",
+                    callback_data=f"calpage_{mode}_{page - 1}"
+                )
+            )
+
+        if page < pages - 1:
+            nav.append(
+                InlineKeyboardButton(
+                    "Siguiente ➡️",
+                    callback_data=f"calpage_{mode}_{page + 1}"
+                )
+            )
+
+        if nav:
+            keyboard.append(nav)
 
     keyboard.extend([
         [
             InlineKeyboardButton(
                 "🔄 Actualizar",
-                callback_data="calendar"
+                callback_data=(
+                    f"calpage_{mode}_{page}" if mode else "calendar"
+                )
             )
         ],
         [
@@ -1895,78 +2187,112 @@ async def show_events(
         ]
     ])
 
-    await query.edit_message_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(
-            keyboard
+    await _calendar_edit(query, text[:4000], keyboard)
+
+
+async def show_calendar_mode(query, mode, page=0):
+    """Dibuja una vista del calendario (hoy, mañana, semana, impacto, divisa)."""
+
+    mode = str(mode or "")
+
+    if mode == "today":
+        day = today_date()
+        await show_events(
+            query, day, day,
+            title=f"📅 <b>EVENTOS DE HOY</b> — {date_label_es(day)}",
+            page=page, mode=mode
         )
-    )
+
+    elif mode == "tomorrow":
+        day = tomorrow_date()
+        await show_events(
+            query, day, day,
+            title=f"📅 <b>EVENTOS DE MAÑANA</b> — {date_label_es(day)}",
+            page=page, mode=mode
+        )
+
+    elif mode == "week":
+        start, end = week_dates()
+        await show_events(
+            query, start, end,
+            title=(
+                "📆 <b>EVENTOS DE ESTA SEMANA</b>\n"
+                f"📅 {date_label_es(start)} → {date_label_es(end)}"
+            ),
+            page=page, mode=mode
+        )
+
+    elif mode in ("high", "medium", "low"):
+        start, end = week_dates()
+        icon, label = {
+            "high": ("🔴", "ALTO"),
+            "medium": ("🟠", "MEDIO"),
+            "low": ("🟢", "BAJO")
+        }[mode]
+        await show_events(
+            query, start, end,
+            title=(
+                f"{icon} <b>EVENTOS DE IMPACTO {label}</b>\n"
+                f"📅 {date_label_es(start)} → {date_label_es(end)}"
+            ),
+            filter_impact=mode,
+            page=page, mode=mode
+        )
+
+    elif mode.startswith("cur_"):
+        currency = mode[4:].upper()
+        start, end = week_dates()
+        flag = CALENDAR_CURRENCY_FLAGS.get(currency, "💵")
+        await show_events(
+            query, start, end,
+            title=f"{flag} <b>EVENTOS {escape(currency)}</b>",
+            currency=currency,
+            page=page, mode=mode
+        )
+
+    else:
+        await calendar_menu(query)
 
 
 # ============================================================
-# CALENDARIO - HOY
+# CALENDARIO - HOY / MAÑANA / SEMANA / IMPACTO
 # ============================================================
 
 async def show_calendar_today(query):
+    await show_calendar_mode(query, "today")
 
-    today = today_date()
-
-    await show_events(
-        query,
-        today,
-        today,
-        title="📅 <b>EVENTOS DE HOY</b>"
-    )
-
-
-# ============================================================
-# CALENDARIO - MAÑANA
-# ============================================================
 
 async def show_calendar_tomorrow(query):
+    await show_calendar_mode(query, "tomorrow")
 
-    tomorrow = tomorrow_date()
-
-    await show_events(
-        query,
-        tomorrow,
-        tomorrow,
-        title="📅 <b>EVENTOS DE MAÑANA</b>"
-    )
-
-
-# ============================================================
-# CALENDARIO - SEMANA
-# ============================================================
 
 async def show_calendar_week(query):
+    await show_calendar_mode(query, "week")
 
-    start, end = week_dates()
-
-    await show_events(
-        query,
-        start,
-        end,
-        title="📆 <b>EVENTOS DE ESTA SEMANA</b>"
-    )
-
-
-# ============================================================
-# CALENDARIO - ALTO IMPACTO
-# ============================================================
 
 async def show_calendar_high(query):
+    await show_calendar_mode(query, "high")
 
-    start, end = week_dates()
 
-    await show_events(
-        query,
-        start,
-        end,
-        title="🔴 <b>EVENTOS DE ALTO IMPACTO</b>",
-        filter_high=True
-    )
+async def show_calendar_medium(query):
+    await show_calendar_mode(query, "medium")
+
+
+async def show_calendar_low(query):
+    await show_calendar_mode(query, "low")
+
+
+async def show_calendar_page(query, payload):
+    """callback_data: calpage_<modo>_<página> (el modo puede contener '_')."""
+
+    mode, _, page_text = str(payload).rpartition("_")
+
+    try:
+        page = int(page_text)
+    except ValueError:
+        mode, page = str(payload), 0
+
+    await show_calendar_mode(query, mode, page)
 
 
 # ============================================================
@@ -1977,17 +2303,6 @@ async def currency_events(query):
 
     start_date, end_date = week_dates()
     events = await fetch_calendar_events(start_date, end_date)
-
-    currency_flags = {
-        "USD": "🇺🇸",
-        "EUR": "🇪🇺",
-        "GBP": "🇬🇧",
-        "JPY": "🇯🇵",
-        "CHF": "🇨🇭",
-        "CAD": "🇨🇦",
-        "AUD": "🇦🇺",
-        "NZD": "🇳🇿"
-    }
 
     currencies = set()
 
@@ -2005,7 +2320,7 @@ async def currency_events(query):
     row = []
 
     for currency in currencies:
-        flag = currency_flags.get(currency, "💵")
+        flag = CALENDAR_CURRENCY_FLAGS.get(currency, "💵")
         row.append(
             InlineKeyboardButton(
                 f"{flag} {currency}",
@@ -2024,7 +2339,7 @@ async def currency_events(query):
         text = (
             "💵 <b>EVENTOS POR DIVISA</b>\n\n"
             "Estas son únicamente las divisas que tienen "
-            "eventos disponibles durante esta semana.\n\n"
+            "eventos disponibles durante los próximos 7 días.\n\n"
             "👇 Selecciona una divisa:"
         )
     else:
@@ -2041,49 +2356,15 @@ async def currency_events(query):
         )
     ])
 
-    await query.edit_message_text(
-        text,
-        parse_mode="HTML",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+    await _calendar_edit(query, text, keyboard)
 
-
-# ============================================================
-# MOSTRAR EVENTOS POR DIVISA
-# ============================================================
 
 async def show_currency_events(
     query,
     currency
 ):
 
-    start, end = week_dates()
-
-    currency_flags = {
-        "USD": "🇺🇸",
-        "EUR": "🇪🇺",
-        "GBP": "🇬🇧",
-        "JPY": "🇯🇵",
-        "CHF": "🇨🇭",
-        "CAD": "🇨🇦",
-        "AUD": "🇦🇺",
-        "NZD": "🇳🇿"
-    }
-
-    flag = currency_flags.get(
-        currency.upper(),
-        "💵"
-    )
-
-    await show_events(
-        query,
-        start,
-        end,
-        title=(
-            f"{flag} <b>EVENTOS {currency.upper()}</b>"
-        ),
-        currency=currency
-    )
+    await show_calendar_mode(query, f"cur_{str(currency).upper()}")
 
 
 # ============================================================
@@ -3316,6 +3597,7 @@ def admin_menu_keyboard():
         [InlineKeyboardButton(f"📝 Publicar texto ({count}/{COMMUNITY_DAILY_TARGET})", callback_data="admin_community_text")],
         [InlineKeyboardButton("🖼️ Publicar imagen", callback_data="admin_community_photo")],
         [InlineKeyboardButton("🎓 Publicar Academia", callback_data="admin_community_academy")],
+        [InlineKeyboardButton("📣 Mensaje a usuarios", callback_data="admin_broadcast")],
         [InlineKeyboardButton("📊 Estado de publicaciones", callback_data="admin_community_stats")],
         [InlineKeyboardButton("🔙 Volver", callback_data="back_main")]
     ])
@@ -3389,12 +3671,17 @@ async def admin_stats(query):
 async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message or not update.effective_user or not is_admin(update.effective_user.id): return
     context.user_data.pop("admin_action",None)
-    await update.message.reply_text("❌ Publicación cancelada.",reply_markup=admin_menu_keyboard())
+    context.user_data.pop("broadcast_draft",None)
+    await update.message.reply_text("❌ Cancelado. No se ha enviado nada.",reply_markup=admin_menu_keyboard())
 
 
 async def admin_text_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.channel_post or not update.message or not update.effective_user or not is_admin(update.effective_user.id): return
-    if context.user_data.get("admin_action") != "community_text": return
+    admin_action=context.user_data.get("admin_action")
+    if admin_action == "broadcast_text":
+        await admin_broadcast_receive_text(update, context)
+        return
+    if admin_action != "community_text": return
     channel_id=get_community_channel_id()
     if not channel_id:
         context.user_data.pop("admin_action",None)
@@ -3416,37 +3703,579 @@ async def admin_photo_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Imagen publicada.\n\n📅 Publicaciones manuales hoy: {count}/{COMMUNITY_DAILY_TARGET}",reply_markup=admin_menu_keyboard())
 
 
+# ============================================================
+# ADMINISTRACIÓN — MENSAJES A LOS USUARIOS DEL BOT
+# ============================================================
+
+BROADCAST_HEADER_HTML = "📢 <b>Aviso de ApexQuant</b>\n\n"
+BROADCAST_HEADER_PLAIN = "📢 Aviso de ApexQuant\n\n"
+BROADCAST_MAX_CHARS = 3500
+_BROADCAST_TASKS = set()
+
+
+def broadcast_recipient_ids():
+    """Usuarios que han aceptado los términos (es decir, que usan el bot)."""
+
+    ids = []
+
+    for raw_id in load_consents().keys():
+        try:
+            ids.append(int(raw_id))
+        except (TypeError, ValueError):
+            continue
+
+    return ids
+
+
+def broadcast_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🏠 Menú principal", callback_data="back_main")]
+    ])
+
+
+async def admin_broadcast_prompt(query, context):
+    if not is_admin(query.from_user.id):
+        await query.answer("⛔ Acceso restringido.", show_alert=True)
+        return
+
+    context.user_data.pop("broadcast_draft", None)
+    context.user_data["admin_action"] = "broadcast_text"
+
+    total = len(broadcast_recipient_ids())
+
+    await query.edit_message_text(
+        "📣 <b>MENSAJE A USUARIOS</b>\n\n"
+        f"Escribe ahora el mensaje que quieres enviar desde el bot a todos "
+        f"los usuarios registrados (<b>{total}</b>).\n\n"
+        "Puedes usar emojis y HTML básico: "
+        "&lt;b&gt;negrita&lt;/b&gt;, &lt;i&gt;cursiva&lt;/i&gt;.\n"
+        "Antes de enviarlo verás una vista previa y tendrás que confirmarlo.\n\n"
+        "❌ /cancelar para cancelar.",
+        parse_mode="HTML"
+    )
+
+
+async def admin_broadcast_receive_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    text = (update.message.text or "").strip()
+
+    if not text:
+        return
+
+    if len(text) > BROADCAST_MAX_CHARS:
+        await update.message.reply_text(
+            f"⚠️ El mensaje es demasiado largo ({len(text)} caracteres). "
+            f"El máximo es {BROADCAST_MAX_CHARS}. Acórtalo y envíalo de nuevo, "
+            "o usa /cancelar."
+        )
+        return
+
+    parse_mode = "HTML"
+    note = ""
+
+    try:
+        await update.message.reply_text(
+            BROADCAST_HEADER_HTML + text,
+            parse_mode="HTML",
+            disable_web_page_preview=True,
+            reply_markup=broadcast_keyboard()
+        )
+    except Exception as error:
+        logger.warning("Vista previa del aviso: HTML rechazado (%s)", error)
+        parse_mode = None
+        note = "\n\n⚠️ El HTML no era válido: se enviará como texto plano."
+        await update.message.reply_text(
+            BROADCAST_HEADER_PLAIN + text,
+            disable_web_page_preview=True,
+            reply_markup=broadcast_keyboard()
+        )
+
+    context.user_data["broadcast_draft"] = {
+        "text": text,
+        "parse_mode": parse_mode
+    }
+    context.user_data.pop("admin_action", None)
+
+    total = len(broadcast_recipient_ids())
+
+    await update.message.reply_text(
+        f"👆 Así lo verán los usuarios.\n\n"
+        f"¿Enviarlo ahora a <b>{total}</b> usuarios?{note}",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([
+            [InlineKeyboardButton("✅ Enviar ahora", callback_data="admin_broadcast_send")],
+            [InlineKeyboardButton("✏️ Reescribir", callback_data="admin_broadcast")],
+            [InlineKeyboardButton("❌ Cancelar", callback_data="admin_broadcast_cancel")]
+        ])
+    )
+
+
+async def _run_broadcast(bot, admin_chat_id, draft, recipients):
+    sent = 0
+    blocked = 0
+    failed = 0
+
+    parse_mode = draft.get("parse_mode")
+    body = (
+        (BROADCAST_HEADER_HTML if parse_mode else BROADCAST_HEADER_PLAIN)
+        + draft["text"]
+    )
+
+    for user_id in recipients:
+        for attempt in range(2):
+            try:
+                await bot.send_message(
+                    chat_id=user_id,
+                    text=body,
+                    parse_mode=parse_mode,
+                    disable_web_page_preview=True,
+                    reply_markup=broadcast_keyboard()
+                )
+                sent += 1
+                break
+            except RetryAfter as error:
+                await asyncio.sleep(float(getattr(error, "retry_after", 5)) + 1)
+                if attempt == 1:
+                    failed += 1
+            except Forbidden:
+                blocked += 1
+                break
+            except Exception as error:
+                logger.warning("Aviso no enviado a %s: %s", user_id, error)
+                failed += 1
+                break
+
+        # Telegram permite unos 30 mensajes por segundo; se envía más despacio.
+        await asyncio.sleep(0.06)
+
+    logger.info(
+        "Aviso a usuarios terminado: enviados=%s, bloqueados=%s, fallidos=%s",
+        sent, blocked, failed
+    )
+
+    try:
+        await bot.send_message(
+            chat_id=admin_chat_id,
+            text=(
+                "✅ <b>Envío terminado</b>\n\n"
+                f"📨 Entregados: <b>{sent}</b>\n"
+                f"🚫 Han bloqueado el bot: <b>{blocked}</b>\n"
+                f"⚠️ Fallidos: <b>{failed}</b>"
+            ),
+            parse_mode="HTML",
+            reply_markup=admin_menu_keyboard()
+        )
+    except Exception as error:
+        logger.error("No se pudo enviar el informe del aviso al admin: %s", error)
+
+
+async def admin_broadcast_send(query, context):
+    if not is_admin(query.from_user.id):
+        await query.answer("⛔ Acceso restringido.", show_alert=True)
+        return
+
+    draft = context.user_data.pop("broadcast_draft", None)
+
+    if not draft:
+        await query.edit_message_text(
+            "⚠️ No hay ningún mensaje pendiente de enviar.",
+            reply_markup=admin_menu_keyboard()
+        )
+        return
+
+    recipients = broadcast_recipient_ids()
+
+    if not recipients:
+        await query.edit_message_text(
+            "⚠️ Todavía no hay usuarios registrados a quienes enviar el mensaje.",
+            reply_markup=admin_menu_keyboard()
+        )
+        return
+
+    await query.edit_message_text(
+        f"📤 Enviando el mensaje a {len(recipients)} usuarios...\n\n"
+        "Te avisaré aquí cuando termine. Mientras tanto el bot sigue funcionando con normalidad."
+    )
+
+    task = asyncio.create_task(
+        _run_broadcast(context.bot, query.from_user.id, draft, recipients)
+    )
+    _BROADCAST_TASKS.add(task)
+    task.add_done_callback(_BROADCAST_TASKS.discard)
+
+
+async def admin_broadcast_cancel(query, context):
+    if not is_admin(query.from_user.id):
+        await query.answer("⛔ Acceso restringido.", show_alert=True)
+        return
+
+    context.user_data.pop("broadcast_draft", None)
+    context.user_data.pop("admin_action", None)
+
+    await query.edit_message_text(
+        "❌ Envío cancelado. No se ha enviado nada.",
+        reply_markup=admin_menu_keyboard()
+    )
+
+
+# ============================================================
+# ALERTAS DE ALTO IMPACTO CON EXPLICACIÓN Y ESCENARIOS
+# ============================================================
+
+HIGH_IMPACT_BEFORE_MINUTES = 30
+HIGH_IMPACT_RESULT_WINDOW_MINUTES = 240
+
+# (par, sube_cuando_la_divisa_se_fortalece)
+EVENT_PAIR_MOVES = {
+    "USD": [("EUR/USD", False), ("GBP/USD", False), ("USD/JPY", True), ("AUD/USD", False)],
+    "EUR": [("EUR/USD", True), ("EUR/GBP", True), ("EUR/JPY", True)],
+    "GBP": [("GBP/USD", True), ("GBP/JPY", True), ("EUR/GBP", False)],
+    "JPY": [("USD/JPY", False), ("GBP/JPY", False), ("EUR/JPY", False)],
+    "CAD": [("USD/CAD", False), ("CAD/JPY", True)],
+    "AUD": [("AUD/USD", True), ("AUD/JPY", True)],
+    "NZD": [("NZD/USD", True), ("NZD/JPY", True)],
+    "CHF": [("USD/CHF", False), ("EUR/CHF", False)]
+}
+
+CENTRAL_BANK_PHRASES = (
+    "federal reserve", "rate decision", "interest rate", "monetary policy",
+    "policy rate", "bank of england", "bank of japan", "bank of canada",
+    "riksbank", "norges"
+)
+CENTRAL_BANK_ACRONYMS = re.compile(
+    r"\b(?:fomc|ecb|boe|boj|boc|rba|rbnz|snb|pboc)\b"
+)
+
+INVERSE_WORDS = ("unemployment", "jobless", "claims")
+
+
+def event_kind(name):
+    text = str(name or "").lower()
+
+    if any(phrase in text for phrase in CENTRAL_BANK_PHRASES) or CENTRAL_BANK_ACRONYMS.search(text):
+        return "central_bank"
+
+    if any(word in text for word in INVERSE_WORDS):
+        return "inverse"
+
+    return "normal"
+
+
+def parse_event_number(value):
+    """Convierte textos como '3.0% y/y' o '225K' en un número comparable."""
+
+    if value is None:
+        return None
+
+    text = str(value).strip().replace(",", "")
+    match = re.search(r"(-?\d+(?:\.\d+)?)\s*([KkMmBbTt])?(?![A-Za-z])", text)
+
+    if not match:
+        return None
+
+    number = float(match.group(1))
+    multiplier = {
+        "k": 1e3, "m": 1e6, "b": 1e9, "t": 1e12
+    }.get((match.group(2) or "").lower(), 1)
+
+    return number * multiplier
+
+
+def _pair_moves_text(currency, strong):
+    parts = []
+
+    for pair, up_when_strong in EVENT_PAIR_MOVES.get(currency, []):
+        goes_up = up_when_strong if strong else not up_when_strong
+        parts.append(f"{pair} {'↑' if goes_up else '↓'}")
+
+    return " · ".join(parts)
+
+
+def _other_assets_text(currency, strong):
+    if currency == "USD":
+        arrow = "↓" if strong else "↑"
+        return (
+            f"XAU/USD {arrow} · BTC/USD {arrow} (suelen moverse en sentido "
+            "inverso al dólar, aunque no siempre) · US30: reacción mixta, "
+            "depende de si el mercado lo lee como crecimiento o como tipos más altos"
+        )
+
+    if currency in EVENT_PAIR_MOVES:
+        return (
+            "XAU/USD, US30 y BTC/USD: efecto indirecto, a través del dólar "
+            "y del apetito por riesgo"
+        )
+
+    return ""
+
+
+def event_scenarios_html(name, currency):
+    cur = str(currency or "").upper()
+    kind = event_kind(name)
+
+    if kind == "central_bank":
+        up_label = "🦅 Más restrictivo (hawkish) que el consenso"
+        down_label = "🕊️ Más flexible (dovish) que el consenso"
+    elif kind == "inverse":
+        up_label = "📈 Dato mejor que el consenso (menos desempleo o peticiones)"
+        down_label = "📉 Dato peor que el consenso (más desempleo o peticiones)"
+    else:
+        up_label = "📈 Dato superior al consenso"
+        down_label = "📉 Dato inferior al consenso"
+
+    lines = []
+
+    if cur in EVENT_PAIR_MOVES:
+        for strong, label in ((True, up_label), (False, down_label)):
+            verb = "fortalecerse" if strong else "debilitarse"
+            lines.append(f"<b>{label}</b>")
+            lines.append(
+                f"→ {escape(cur)} tiende a {verb}: {_pair_moves_text(cur, strong)}"
+            )
+            others = _other_assets_text(cur, strong)
+            if others:
+                lines.append(f"→ {escape(others)}")
+            lines.append("")
+    else:
+        lines.append(
+            "El efecto sobre pares y activos depende de la divisa afectada; "
+            "compara el resultado con el consenso."
+        )
+        lines.append("")
+
+    lines.append("↔️ <b>Dato en línea con el consenso</b>")
+    lines.append(
+        "→ La reacción suele ser limitada; el mercado se fija en el detalle y el tono."
+    )
+
+    if kind == "central_bank":
+        lines.append("")
+        lines.append(
+            "ℹ️ En bancos centrales importa tanto la decisión como el comunicado "
+            "y la rueda de prensa: la primera reacción puede revertirse."
+        )
+
+    return "\n".join(lines)
+
+
+def _alert_time_line(moment):
+    local = moment.astimezone(CALENDAR_TZ)
+
+    if CALENDAR_TZ_LABEL == "UTC":
+        return f"🕒 {moment:%H:%M} UTC"
+
+    return f"🕒 {moment:%H:%M} UTC · {local:%H:%M} ({escape(CALENDAR_TZ_LABEL)})"
+
+
+ALERT_DISCLAIMER = (
+    "⚠️ <b>Aviso:</b> contenido informativo y educativo. No es una señal ni una "
+    "recomendación de entrada; los escenarios son tendencias habituales y no "
+    "una predicción. Gestiona tu riesgo.\n\n"
+    '📊 Datos: <a href="https://www.financecalendar.com">FinanceCalendar.com</a>'
+)
+
+
+def build_high_impact_alert(event, minutes):
+    name = str(event_value(event, "name", "title", "event") or "Evento económico")
+    currency = event_currency(event).upper()
+    moment = event_datetime_utc(event)
+    profile = calendar_event_profile(name)
+
+    if minutes > 1:
+        when = f"en ~{int(round(minutes))} min"
+    else:
+        when = "publicándose ahora"
+
+    lines = [
+        "🚨 <b>EVENTO ECONÓMICO DE ALTO IMPACTO</b>",
+        "",
+        f"🔴 <b>{escape(currency or 'N/D')}</b> · {escape(name)}",
+        f"{_alert_time_line(moment)} — {when}"
+    ]
+
+    consensus = event_value(event, "consensus", "forecast", "expected")
+    prior = event_value(event, "prior", "previous")
+
+    refs = []
+    if consensus:
+        refs.append(f"📊 Consenso: <b>{escape(str(consensus))}</b>")
+    if prior:
+        refs.append(f"⏮️ Anterior: <b>{escape(str(prior))}</b>")
+    if refs:
+        lines.append(" · ".join(refs))
+
+    lines.extend([
+        "",
+        "📖 <b>¿Qué es?</b>",
+        escape(profile["measure"]),
+        "",
+        "🏦 <b>¿Por qué importa?</b>",
+        escape(profile["why"]),
+        "",
+        "🎯 <b>Escenarios según el resultado frente al consenso</b>",
+        "",
+        event_scenarios_html(name, currency),
+        "",
+        ALERT_DISCLAIMER
+    ])
+
+    return "\n".join(lines)[:4000]
+
+
+def build_result_alert(event):
+    name = str(event_value(event, "name", "title", "event") or "Evento económico")
+    currency = event_currency(event).upper()
+    consensus = event_value(event, "consensus", "forecast", "expected")
+    prior = event_value(event, "prior", "previous")
+    actual = event_value(event, "actual")
+    kind = event_kind(name)
+
+    consensus_number = parse_event_number(consensus)
+    actual_number = parse_event_number(actual)
+
+    reading = (
+        "Compara el dato publicado con el consenso: la reacción depende de "
+        "cuánto se aleja de lo esperado."
+    )
+
+    if consensus_number is not None and actual_number is not None:
+        diff = actual_number - consensus_number
+
+        if abs(diff) < 1e-9:
+            reading = (
+                "↔️ <b>En línea con el consenso.</b> La reacción suele ser limitada; "
+                "el mercado mira el detalle del informe."
+            )
+        else:
+            above = diff > 0
+            strong = (not above) if kind == "inverse" else above
+
+            if kind == "central_bank":
+                what = "más restrictivo" if above else "más flexible"
+                head = f"{'🦅' if above else '🕊️'} <b>Resultado {what} que el consenso.</b>"
+            else:
+                what = "superior" if above else "inferior"
+                extra = ""
+                if kind == "inverse":
+                    extra = f" ({'más' if above else 'menos'} desempleo/peticiones)"
+                head = f"{'📈' if above else '📉'} <b>Dato {what} al consenso{extra}.</b>"
+
+            if currency in EVENT_PAIR_MOVES:
+                verb = "fortalecerse" if strong else "debilitarse"
+                reading = (
+                    f"{head}\n→ {escape(currency)} tendería a {verb}: "
+                    f"{_pair_moves_text(currency, strong)}\n"
+                    f"→ {escape(_other_assets_text(currency, strong))}"
+                )
+            else:
+                reading = head
+
+    lines = [
+        "✅ <b>RESULTADO PUBLICADO — ALTO IMPACTO</b>",
+        "",
+        f"🔴 <b>{escape(currency or 'N/D')}</b> · {escape(name)}",
+        f"✅ Actual: <b>{escape(str(actual))}</b>"
+    ]
+
+    refs = []
+    if consensus:
+        refs.append(f"📊 Consenso: <b>{escape(str(consensus))}</b>")
+    if prior:
+        refs.append(f"⏮️ Anterior: <b>{escape(str(prior))}</b>")
+    if refs:
+        lines.append(" · ".join(refs))
+
+    lines.extend([
+        "",
+        reading,
+        "",
+        "ℹ️ La primera reacción del mercado puede ser brusca y revertirse en minutos.",
+        "",
+        ALERT_DISCLAIMER
+    ])
+
+    return "\n".join(lines)[:4000]
+
+
 async def community_high_impact_monitor(application):
     while True:
         try:
-            channel_id=get_community_channel_id()
+            channel_id = get_community_channel_id()
+
             if channel_id:
-                today=date.today(); events=await fetch_calendar_events(today,today)
-                seen=_load_json_file(COMMUNITY_EVENTS_FILE,{})
-                now=datetime.now(timezone.utc); changed=False
+                today = today_date()
+                events = await fetch_calendar_events(
+                    today - timedelta(days=1),
+                    today + timedelta(days=1),
+                    impact="high"
+                )
+
+                seen = _load_json_file(COMMUNITY_EVENTS_FILE, {})
+                now = datetime.now(timezone.utc)
+                changed = False
+
                 for event in events or []:
-                    if str(event_value(event,"impact","importance")).lower()!="high": continue
-                    name=str(event_value(event,"name","title","event") or "Evento económico")
-                    currency=event_currency(event).upper() or "N/D"
-                    raw_dt=event_value(event,"time_utc","datetime","date")
-                    if not raw_dt: continue
-                    try:
-                        dt=datetime.fromisoformat(str(raw_dt).strip().replace("Z","+00:00"))
-                    except ValueError: continue
-                    if dt.tzinfo is None: dt=dt.replace(tzinfo=timezone.utc)
-                    dt=dt.astimezone(timezone.utc)
-                    minutes=(dt-now).total_seconds()/60
-                    if minutes < -5 or minutes > 30: continue
-                    key=str(event_value(event,"id","event_id") or f"{name}|{currency}|{raw_dt}")
-                    if key in seen: continue
-                    message=("🚨 <b>EVENTO ECONÓMICO DE ALTO IMPACTO</b>\n\n" f"🔴 <b>{escape(currency)}</b>\n" f"📰 {escape(name)}\n" f"🕒 {dt.strftime('%Y-%m-%d %H:%M UTC')}\n\n" "⚠️ Este evento puede generar volatilidad elevada y movimientos bruscos.\n\n" "🛡️ Gestiona tu riesgo y considera el contexto económico.\n\n" "ApexQuant — información de mercado, no una señal de entrada.")
-                    await application.bot.send_message(chat_id=channel_id,text=message,parse_mode="HTML")
-                    seen[key]=datetime.utcnow().isoformat()+"Z"; changed=True
+                    if str(event_value(event, "impact", "importance")).lower() != "high":
+                        continue
+
+                    moment = event_datetime_utc(event)
+
+                    if not moment:
+                        continue
+
+                    name = str(event_value(event, "name", "title", "event") or "Evento económico")
+                    currency = event_currency(event).upper() or "N/D"
+                    minutes = (moment - now).total_seconds() / 60
+                    base_key = str(
+                        event_value(event, "id", "event_id")
+                        or f"{name}|{currency}|{moment.isoformat()}"
+                    )
+
+                    # 1) Aviso previo con explicación y escenarios.
+                    if (
+                        -5 <= minutes <= HIGH_IMPACT_BEFORE_MINUTES
+                        and base_key not in seen
+                    ):
+                        try:
+                            await application.bot.send_message(
+                                chat_id=channel_id,
+                                text=build_high_impact_alert(event, minutes),
+                                parse_mode="HTML",
+                                disable_web_page_preview=True
+                            )
+                            seen[base_key] = datetime.utcnow().isoformat() + "Z"
+                            changed = True
+                        except Exception as error:
+                            logger.error("No se pudo publicar el aviso de %s: %s", name, error)
+
+                    # 2) Resultado publicado frente al consenso.
+                    result_key = base_key + "|result"
+
+                    if (
+                        event_value(event, "actual")
+                        and -HIGH_IMPACT_RESULT_WINDOW_MINUTES <= minutes <= 0
+                        and result_key not in seen
+                    ):
+                        try:
+                            await application.bot.send_message(
+                                chat_id=channel_id,
+                                text=build_result_alert(event),
+                                parse_mode="HTML",
+                                disable_web_page_preview=True
+                            )
+                            seen[result_key] = datetime.utcnow().isoformat() + "Z"
+                            changed = True
+                        except Exception as error:
+                            logger.error("No se pudo publicar el resultado de %s: %s", name, error)
+
                 if changed:
-                    for old_key in list(seen)[:-500]: seen.pop(old_key,None)
-                    _save_json_file(COMMUNITY_EVENTS_FILE,seen)
-        except asyncio.CancelledError: raise
-        except Exception as error: logger.error("Error en monitor de alto impacto: %s",error,exc_info=True)
+                    for old_key in list(seen)[:-500]:
+                        seen.pop(old_key, None)
+                    _save_json_file(COMMUNITY_EVENTS_FILE, seen)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            logger.error("Error en monitor de alto impacto: %s", error, exc_info=True)
+
         await asyncio.sleep(HIGH_IMPACT_CHECK_SECONDS)
 
 
@@ -4399,6 +5228,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data == "calendar_currency":
             await currency_events(query)
             return
+        if data == "calendar_medium":
+            await show_calendar_medium(query)
+            return
+        if data == "calendar_low":
+            await show_calendar_low(query)
+            return
+        if data.startswith("calpage_"):
+            await show_calendar_page(query, data.replace("calpage_", "", 1))
+            return
         if data.startswith("calendar_context_"):
             event_key = data.replace("calendar_context_", "", 1)
             await show_calendar_context(query, event_key)
@@ -4465,6 +5303,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if data.startswith("admin_academy_"):
             await admin_publish_academy(query, context, data.replace("admin_academy_", "", 1))
+            return
+        if data == "admin_broadcast":
+            await admin_broadcast_prompt(query, context)
+            return
+        if data == "admin_broadcast_send":
+            await admin_broadcast_send(query, context)
+            return
+        if data == "admin_broadcast_cancel":
+            await admin_broadcast_cancel(query, context)
             return
         if data == "admin_community_stats":
             await admin_stats(query)
