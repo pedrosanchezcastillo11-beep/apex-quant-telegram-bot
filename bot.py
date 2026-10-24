@@ -3598,6 +3598,7 @@ def admin_menu_keyboard():
         [InlineKeyboardButton("🖼️ Publicar imagen", callback_data="admin_community_photo")],
         [InlineKeyboardButton("🎓 Publicar Academia", callback_data="admin_community_academy")],
         [InlineKeyboardButton("📣 Mensaje a usuarios", callback_data="admin_broadcast")],
+        [InlineKeyboardButton("🧭 Alertas técnicas", callback_data="admin_tech")],
         [InlineKeyboardButton("📊 Estado de publicaciones", callback_data="admin_community_stats")],
         [InlineKeyboardButton("🔙 Volver", callback_data="back_main")]
     ])
@@ -3608,7 +3609,7 @@ async def show_admin_menu(query):
         await query.answer("⛔ Acceso restringido.", show_alert=True)
         return
     channel_status = "🟢 Canal conectado" if get_community_channel_id() else "🟡 Canal pendiente de detección"
-    text = ("🛠️ <b>ADMINISTRACIÓN — COMUNIDAD</b>\n\n" f"{channel_status}\n" f"📅 Publicaciones manuales hoy: <b>{community_post_count()}/{COMMUNITY_DAILY_TARGET}</b>\n\n" "📢 Desde aquí puedes mantener activa la Comunidad con publicaciones manuales.\n\n" "🚨 Las alertas automáticas de alto impacto funcionan por separado y no consumen el objetivo de 3 publicaciones manuales.")
+    text = ("🛠️ <b>ADMINISTRACIÓN — COMUNIDAD</b>\n\n" f"{channel_status}\n" f"📅 Publicaciones manuales hoy: <b>{community_post_count()}/{COMMUNITY_DAILY_TARGET}</b>\n\n" "📢 Desde aquí puedes mantener activa la Comunidad con publicaciones manuales.\n\n" "🚨 Las alertas automáticas (eventos de alto y medio impacto y alertas técnicas) funcionan por separado y no consumen el objetivo de 3 publicaciones manuales.")
     await query.edit_message_text(text, parse_mode="HTML", reply_markup=admin_menu_keyboard())
 
 
@@ -3665,7 +3666,7 @@ async def admin_publish_academy(query, context, module_id):
 
 async def admin_stats(query):
     if not is_admin(query.from_user.id): return
-    await query.edit_message_text("📊 <b>ESTADO DE COMUNIDAD</b>\n\n" f"📅 Publicaciones manuales hoy: <b>{community_post_count()}/{COMMUNITY_DAILY_TARGET}</b>\n" f"📢 Canal: <code>{get_community_channel_id() or 'Pendiente de detección'}</code>\n\n" "🚨 Las alertas automáticas de alto impacto son independientes.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Administración",callback_data="admin_menu")]]))
+    await query.edit_message_text("📊 <b>ESTADO DE COMUNIDAD</b>\n\n" f"📅 Publicaciones manuales hoy: <b>{community_post_count()}/{COMMUNITY_DAILY_TARGET}</b>\n" f"📢 Canal: <code>{get_community_channel_id() or 'Pendiente de detección'}</code>\n\n" "🚨 Las alertas automáticas de eventos (alto y medio impacto) y las alertas técnicas son independientes.",parse_mode="HTML",reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Administración",callback_data="admin_menu")]]))
 
 
 async def admin_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -4067,9 +4068,11 @@ def _alert_time_line(moment):
 
 
 ALERT_DISCLAIMER = (
-    "⚠️ <b>Aviso:</b> contenido informativo y educativo. No es una señal ni una "
-    "recomendación de entrada; los escenarios son tendencias habituales y no "
-    "una predicción. Gestiona tu riesgo.\n\n"
+    "⚠️ <b>Aviso y riesgo:</b> contenido informativo y educativo. No es una señal ni "
+    "una recomendación de entrada; los escenarios son tendencias habituales y no "
+    "una predicción. Las noticias pueden provocar picos de volatilidad, spreads más "
+    "amplios y deslizamiento: gestiona tu riesgo y evita sobreexponerte durante la "
+    "publicación.\n\n"
     '📊 Datos: <a href="https://www.financecalendar.com">FinanceCalendar.com</a>'
 )
 
@@ -4085,10 +4088,17 @@ def build_high_impact_alert(event, minutes):
     else:
         when = "publicándose ahora"
 
+    medium = str(event_value(event, "impact", "importance")).lower() == "medium"
+    icon = "🟠" if medium else "🔴"
+    header = (
+        "🟠 <b>EVENTO ECONÓMICO DE IMPACTO MEDIO</b>"
+        if medium else "🚨 <b>EVENTO ECONÓMICO DE ALTO IMPACTO</b>"
+    )
+
     lines = [
-        "🚨 <b>EVENTO ECONÓMICO DE ALTO IMPACTO</b>",
+        header,
         "",
-        f"🔴 <b>{escape(currency or 'N/D')}</b> · {escape(name)}",
+        f"{icon} <b>{escape(currency or 'N/D')}</b> · {escape(name)}",
         f"{_alert_time_line(moment)} — {when}"
     ]
 
@@ -4114,9 +4124,18 @@ def build_high_impact_alert(event, minutes):
         "🎯 <b>Escenarios según el resultado frente al consenso</b>",
         "",
         event_scenarios_html(name, currency),
-        "",
-        ALERT_DISCLAIMER
+        ""
     ])
+
+    if medium:
+        lines.extend([
+            "ℹ️ <b>Impacto medio:</b> la reacción suele ser menor que en un evento rojo, "
+            "pero un dato muy alejado del consenso puede mover con fuerza los pares de "
+            f"{escape(currency or 'la divisa')}.",
+            ""
+        ])
+
+    lines.append(ALERT_DISCLAIMER)
 
     return "\n".join(lines)[:4000]
 
@@ -4169,10 +4188,12 @@ def build_result_alert(event):
             else:
                 reading = head
 
+    medium = str(event_value(event, "impact", "importance")).lower() == "medium"
+
     lines = [
-        "✅ <b>RESULTADO PUBLICADO — ALTO IMPACTO</b>",
+        "✅ <b>RESULTADO PUBLICADO — " + ("IMPACTO MEDIO" if medium else "ALTO IMPACTO") + "</b>",
         "",
-        f"🔴 <b>{escape(currency or 'N/D')}</b> · {escape(name)}",
+        f"{'🟠' if medium else '🔴'} <b>{escape(currency or 'N/D')}</b> · {escape(name)}",
         f"✅ Actual: <b>{escape(str(actual))}</b>"
     ]
 
@@ -4196,6 +4217,30 @@ def build_result_alert(event):
     return "\n".join(lines)[:4000]
 
 
+def _env_flag(name, default=True):
+    raw = os.getenv(name)
+    if raw is None or raw.strip() == "":
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on", "si", "sí"}
+
+
+def _env_num(name, default, cast=float):
+    try:
+        return cast(os.getenv(name, "").strip() or default)
+    except (TypeError, ValueError):
+        return default
+
+
+COMMUNITY_IMPACT_LEVELS = ("high", "medium")
+MEDIUM_IMPACT_ENABLED = _env_flag("MEDIUM_IMPACT_ENABLED", True)
+MEDIUM_IMPACT_MAX_PER_DAY = _env_num("MEDIUM_IMPACT_MAX_PER_DAY", 10, int)
+
+
+def _medium_sent_today(seen):
+    prefix = "medium|" + datetime.utcnow().strftime("%Y-%m-%d")
+    return sum(1 for value in seen.values() if str(value).startswith(prefix))
+
+
 async def community_high_impact_monitor(application):
     while True:
         try:
@@ -4203,18 +4248,31 @@ async def community_high_impact_monitor(application):
 
             if channel_id:
                 today = today_date()
-                events = await fetch_calendar_events(
-                    today - timedelta(days=1),
-                    today + timedelta(days=1),
-                    impact="high"
-                )
+                events = []
+
+                for level in COMMUNITY_IMPACT_LEVELS:
+                    if level == "medium" and not MEDIUM_IMPACT_ENABLED:
+                        continue
+
+                    batch = await fetch_calendar_events(
+                        today - timedelta(days=1),
+                        today + timedelta(days=1),
+                        impact=level
+                    )
+                    events.extend(batch or [])
 
                 seen = _load_json_file(COMMUNITY_EVENTS_FILE, {})
                 now = datetime.now(timezone.utc)
                 changed = False
+                handled = set()
 
-                for event in events or []:
-                    if str(event_value(event, "impact", "importance")).lower() != "high":
+                for event in events:
+                    level = str(event_value(event, "impact", "importance")).lower()
+
+                    if level not in COMMUNITY_IMPACT_LEVELS:
+                        continue
+
+                    if level == "medium" and not MEDIUM_IMPACT_ENABLED:
                         continue
 
                     moment = event_datetime_utc(event)
@@ -4230,10 +4288,27 @@ async def community_high_impact_monitor(application):
                         or f"{name}|{currency}|{moment.isoformat()}"
                     )
 
+                    if base_key in handled:
+                        continue
+
+                    handled.add(base_key)
+                    medium = level == "medium"
+
+                    # El impacto medio sólo se publica para las divisas principales,
+                    # para no llenar el Canal con indicadores de divisas secundarias.
+                    if medium and currency not in EVENT_PAIR_MOVES:
+                        continue
+
+                    stamp = (
+                        ("medium|" if medium else "")
+                        + datetime.utcnow().isoformat() + "Z"
+                    )
+
                     # 1) Aviso previo con explicación y escenarios.
                     if (
                         -5 <= minutes <= HIGH_IMPACT_BEFORE_MINUTES
                         and base_key not in seen
+                        and (not medium or _medium_sent_today(seen) < MEDIUM_IMPACT_MAX_PER_DAY)
                     ):
                         try:
                             await application.bot.send_message(
@@ -4242,18 +4317,20 @@ async def community_high_impact_monitor(application):
                                 parse_mode="HTML",
                                 disable_web_page_preview=True
                             )
-                            seen[base_key] = datetime.utcnow().isoformat() + "Z"
+                            seen[base_key] = stamp
                             changed = True
                         except Exception as error:
                             logger.error("No se pudo publicar el aviso de %s: %s", name, error)
 
                     # 2) Resultado publicado frente al consenso.
+                    # En impacto medio sólo se publica si antes se avisó del evento.
                     result_key = base_key + "|result"
 
                     if (
                         event_value(event, "actual")
                         and -HIGH_IMPACT_RESULT_WINDOW_MINUTES <= minutes <= 0
                         and result_key not in seen
+                        and (not medium or base_key in seen)
                     ):
                         try:
                             await application.bot.send_message(
@@ -4274,10 +4351,1578 @@ async def community_high_impact_monitor(application):
         except asyncio.CancelledError:
             raise
         except Exception as error:
-            logger.error("Error en monitor de alto impacto: %s", error, exc_info=True)
+            logger.error("Error en monitor de eventos (alto/medio impacto): %s", error, exc_info=True)
 
         await asyncio.sleep(HIGH_IMPACT_CHECK_SECONDS)
 
+
+# ============================================================
+# ALERTAS TÉCNICAS APEXQUANT (SMART MONEY) — MOTOR DE ANÁLISIS
+# ============================================================
+# Metodología (H4 → H1 → M5):
+#   H4  : dirección/tendencia (estructura HH/HL o LH/LL + EMA 50).
+#   H1  : zonas de liquidez (máximos/mínimos, equal highs/lows), imbalances (FVG)
+#         y order blocks (OB); además rangos laterales y canales.
+#   M5  : entrada/POI. Barrido de liquidez dentro de una zona H1, cierre de vela a
+#         favor (recuperación del nivel) y vela de confirmación a favor de H4.
+#   S/R : en rangos o canales, ruptura → cierre de vela (ruptura real o barrido)
+#         → vela de continuación.
+# Son ALERTAS informativas: no son señales ni recomendaciones de entrada.
+
+TWELVEDATA_API_KEY = _clean_key(os.getenv("TWELVEDATA_API_KEY"))
+TWELVEDATA_TS_URL = "https://api.twelvedata.com/time_series"
+TECH_ALERTS_FILE = os.getenv("TECH_ALERTS_FILE", "/data/tech_alerts.json").strip()
+
+TECH_ALERTS_AUTOSTART = _env_flag("TECH_ALERTS_ENABLED", True)
+TECH_TICK_SECONDS = 60
+TECH_M5_NEAR_SECONDS = _env_num("TECH_M5_NEAR_SECONDS", 300, int)    # precio cerca de una zona
+TECH_M5_FAR_SECONDS = _env_num("TECH_M5_FAR_SECONDS", 900, int)      # precio lejos de las zonas
+TECH_H1_TTL_SECONDS = _env_num("TECH_H1_TTL_SECONDS", 3600, int)
+TECH_H4_TTL_SECONDS = _env_num("TECH_H4_TTL_SECONDS", 7200, int)
+TD_DAILY_BUDGET = _env_num("TWELVEDATA_DAILY_BUDGET", 740, int)      # plan gratis: 800/día
+TD_PER_MINUTE = _env_num("TWELVEDATA_PER_MINUTE", 7, int)            # plan gratis: 8/min
+
+TECH_MIN_SCORE = _env_num("TECH_MIN_SCORE", 2, int)                  # confluencias extra mínimas
+TECH_COOLDOWN_MINUTES = _env_num("TECH_COOLDOWN_MINUTES", 45, int)
+TECH_MAX_PER_SYMBOL_DAY = _env_num("TECH_MAX_PER_SYMBOL_DAY", 3, int)
+TECH_MAX_PER_DAY = _env_num("TECH_MAX_PER_DAY", 10, int)
+TECH_ACTIVE_START_UTC = _env_num("TECH_ACTIVE_START_UTC", 6, int)    # Londres
+TECH_ACTIVE_END_UTC = _env_num("TECH_ACTIVE_END_UTC", 21, int)       # cierre de Nueva York
+TECH_SWEEP_LOOKBACK = 18        # velas M5 (~90 min) en las que se busca el barrido
+TECH_NEWS_AHEAD_MINUTES = _env_num("TECH_NEWS_AHEAD_MINUTES", 240, int)
+TECH_NEWS_BEHIND_MINUTES = _env_num("TECH_NEWS_BEHIND_MINUTES", 60, int)
+TECH_NEWS_DANGER_MINUTES = 30   # noticia roja a menos de este margen = riesgo elevado
+
+TECH_SYMBOLS = {
+    "GBP/USD": {
+        "td": "GBP/USD", "tv": "OANDA:GBPUSD", "digits": 5, "ccy": ("GBP", "USD"),
+        "kind": "fx", "emoji": "💷",
+        "risk": "Es sensible a datos de Reino Unido y de EE. UU. y puede moverse con fuerza en la apertura de Londres y Nueva York."
+    },
+    "GBP/JPY": {
+        "td": "GBP/JPY", "tv": "OANDA:GBPJPY", "digits": 3, "ccy": ("GBP", "JPY"),
+        "kind": "fx", "emoji": "💴",
+        "risk": "Es un cruce muy volátil: los movimientos son rápidos y el spread puede ampliarse en noticias."
+    },
+    "US30": {
+        "td": os.getenv("TECH_SYMBOL_US30", "DJI").strip() or "DJI",
+        "tv": "OANDA:US30USD", "digits": 1, "ccy": ("USD",),
+        "kind": "index", "emoji": "🏛️",
+        "risk": "Es un índice: puede abrir con gaps y reaccionar con fuerza a datos de EE. UU. y resultados de empresas."
+    },
+    "BTC/USD": {
+        "td": "BTC/USD", "tv": "BITSTAMP:BTCUSD", "digits": 1, "ccy": ("USD",),
+        "kind": "crypto", "emoji": "₿",
+        "risk": "Es un activo de volatilidad muy alta que cotiza 24/7; la liquidez puede ser baja en fines de semana y horas nocturnas."
+    },
+    "XAU/USD": {
+        "td": "XAU/USD", "tv": "OANDA:XAUUSD", "digits": 2, "ccy": ("USD",),
+        "kind": "metal", "emoji": "🥇",
+        "risk": "El oro reacciona con fuerza a datos de EE. UU., a la Fed y a movimientos del dólar; el spread puede ampliarse."
+    }
+}
+
+TECH_RISK_BASE = (
+    "⚠️ <b>Gestión del riesgo:</b> alerta informativa y educativa; no es una señal "
+    "ni una recomendación de entrada. Un barrido o una vela de confirmación no "
+    "garantizan continuidad y el escenario puede fallar. Define antes tu riesgo por "
+    "operación (un porcentaje bajo y fijo de tu capital), usa siempre stop loss y "
+    "ten en cuenta spread, deslizamiento y noticias."
+)
+
+TECH_STATE = {}
+TECH_RUNTIME = {}
+_TECH_TASKS = set()
+_TD_CALLS = []
+_TD_LOCK = None
+
+
+class TechDataError(Exception):
+    pass
+
+
+class TechRateLimit(TechDataError):
+    pass
+
+
+class TechBudgetError(TechDataError):
+    pass
+
+
+class TechSymbolError(TechDataError):
+    pass
+
+
+# ------------------------------------------------------------
+# Estado persistente
+# ------------------------------------------------------------
+
+def _tech_today():
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+
+def tech_state_load():
+    global TECH_STATE
+    data = _load_json_file(TECH_ALERTS_FILE, {})
+    if not isinstance(data, dict):
+        data = {}
+    data.setdefault("enabled", TECH_ALERTS_AUTOSTART)
+    data.setdefault("budget", {"day": _tech_today(), "used": 0})
+    data.setdefault("sent", {})
+    data.setdefault("daily", {"day": _tech_today(), "total": 0, "by_symbol": {}})
+    data.setdefault("last_alert", {})
+    data.setdefault("history", [])
+    data.setdefault("disabled", {})
+    data.setdefault("notified", {})
+    TECH_STATE = data
+    return data
+
+
+def tech_state_save():
+    try:
+        sent = TECH_STATE.get("sent", {})
+        if len(sent) > 300:
+            for old_key in list(sent)[:-300]:
+                sent.pop(old_key, None)
+        TECH_STATE["history"] = TECH_STATE.get("history", [])[-20:]
+        _save_json_file(TECH_ALERTS_FILE, TECH_STATE)
+    except Exception as error:
+        logger.error("No se pudo guardar el estado de alertas técnicas: %s", error)
+
+
+def _tech_roll_day():
+    today = _tech_today()
+    if TECH_STATE.get("budget", {}).get("day") != today:
+        TECH_STATE["budget"] = {"day": today, "used": 0}
+    if TECH_STATE.get("daily", {}).get("day") != today:
+        TECH_STATE["daily"] = {"day": today, "total": 0, "by_symbol": {}}
+    TECH_STATE["notified"] = {
+        k: v for k, v in TECH_STATE.get("notified", {}).items() if str(k).endswith(today)
+    }
+
+
+def tech_budget_used():
+    _tech_roll_day()
+    return int(TECH_STATE["budget"].get("used", 0))
+
+
+# ------------------------------------------------------------
+# Twelve Data (con control de créditos)
+# ------------------------------------------------------------
+
+def _td_fetch_blocking(symbol, interval, outputsize):
+    params = {
+        "symbol": symbol,
+        "interval": interval,
+        "outputsize": outputsize,
+        "order": "asc",
+        "timezone": "UTC",
+        "apikey": TWELVEDATA_API_KEY
+    }
+    request = Request(
+        TWELVEDATA_TS_URL + "?" + urlencode(params),
+        headers={"User-Agent": "Mozilla/5.0 ApexQuantBot/1.0", "Accept": "application/json"}
+    )
+
+    try:
+        with urlopen(request, timeout=20) as response:
+            return json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        try:
+            return json.loads(error.read().decode("utf-8"))
+        except Exception:
+            return {"status": "error", "code": error.code, "message": f"HTTP {error.code}"}
+
+
+def tech_parse_candles(data):
+    values = data.get("values") if isinstance(data, dict) else None
+    candles = []
+
+    for row in values or []:
+        try:
+            raw = str(row.get("datetime"))
+            fmt = "%Y-%m-%d %H:%M:%S" if " " in raw else "%Y-%m-%d"
+            moment = datetime.strptime(raw, fmt).replace(tzinfo=timezone.utc)
+            candle = {
+                "t": moment,
+                "o": float(row["open"]),
+                "h": float(row["high"]),
+                "l": float(row["low"]),
+                "c": float(row["close"]),
+                "v": float(row.get("volume") or 0)
+            }
+        except (KeyError, TypeError, ValueError):
+            continue
+
+        if candle["h"] < candle["l"]:
+            continue
+
+        candles.append(candle)
+
+    candles.sort(key=lambda c: c["t"])
+    return candles
+
+
+def tech_closed_candles(candles, interval_seconds, now=None):
+    """Descarta la vela en formación: sólo se analizan velas ya cerradas."""
+    now = now or datetime.now(timezone.utc)
+    return [c for c in candles if c["t"].timestamp() + interval_seconds <= now.timestamp()]
+
+
+async def td_get_candles(symbol, interval, outputsize):
+    global _TD_LOCK
+
+    if not TWELVEDATA_API_KEY:
+        raise TechDataError("falta TWELVEDATA_API_KEY")
+
+    _tech_roll_day()
+
+    if TECH_STATE["budget"]["used"] >= TD_DAILY_BUDGET:
+        raise TechBudgetError("presupuesto diario de Twelve Data agotado")
+
+    if _TD_LOCK is None:
+        _TD_LOCK = asyncio.Lock()
+
+    async with _TD_LOCK:
+        while True:
+            now = time.monotonic()
+            while _TD_CALLS and now - _TD_CALLS[0] >= 61:
+                _TD_CALLS.pop(0)
+            if len(_TD_CALLS) < TD_PER_MINUTE:
+                break
+            await asyncio.sleep(max(0.5, 61 - (now - _TD_CALLS[0])))
+
+        _TD_CALLS.append(time.monotonic())
+        TECH_STATE["budget"]["used"] = int(TECH_STATE["budget"].get("used", 0)) + 1
+
+    loop = asyncio.get_running_loop()
+
+    try:
+        data = await loop.run_in_executor(None, _td_fetch_blocking, symbol, interval, outputsize)
+    except Exception as error:
+        raise TechDataError(f"sin conexión con Twelve Data ({error})")
+
+    if isinstance(data, dict) and data.get("status") == "error":
+        code = int(data.get("code") or 0)
+        message = str(data.get("message") or "error")[:160]
+
+        if code == 429:
+            raise TechRateLimit(message)
+        if code in (401, 403) and "plan" not in message.lower() and "symbol" not in message.lower():
+            raise TechDataError(f"clave rechazada: {message}")
+        if code in (400, 403, 404):
+            raise TechSymbolError(message)
+        raise TechDataError(message)
+
+    candles = tech_parse_candles(data)
+
+    if not candles:
+        raise TechDataError(f"{symbol} {interval}: respuesta sin velas")
+
+    return candles
+
+
+# ------------------------------------------------------------
+# Indicadores y estructura
+# ------------------------------------------------------------
+
+def tech_atr(candles, period=14):
+    if len(candles) < period + 1:
+        return None
+
+    total = 0.0
+
+    for i in range(len(candles) - period, len(candles)):
+        prev_close = candles[i - 1]["c"]
+        total += max(
+            candles[i]["h"] - candles[i]["l"],
+            abs(candles[i]["h"] - prev_close),
+            abs(candles[i]["l"] - prev_close)
+        )
+
+    value = total / period
+    return value if value > 0 else None
+
+
+def tech_ema(values, period):
+    if not values:
+        return None
+
+    period = min(period, len(values))
+    k = 2.0 / (period + 1)
+    ema = sum(values[:period]) / period
+
+    for value in values[period:]:
+        ema = value * k + ema * (1 - k)
+
+    return ema
+
+
+def tech_find_swings(candles, left=2, right=2):
+    highs, lows = [], []
+
+    for i in range(left, len(candles) - right):
+        hi, lo = candles[i]["h"], candles[i]["l"]
+
+        if (
+            all(hi > candles[j]["h"] for j in range(i - left, i))
+            and all(hi >= candles[j]["h"] for j in range(i + 1, i + right + 1))
+        ):
+            highs.append((i, hi))
+
+        if (
+            all(lo < candles[j]["l"] for j in range(i - left, i))
+            and all(lo <= candles[j]["l"] for j in range(i + 1, i + right + 1))
+        ):
+            lows.append((i, lo))
+
+    return highs, lows
+
+
+def tech_h4_bias(c4):
+    """Dirección H4: estructura de máximos/mínimos + EMA 50."""
+
+    neutral = {"dir": "neutral", "label": "Neutral / rango", "range": None}
+
+    if len(c4) < 30:
+        neutral["reason"] = "datos H4 insuficientes"
+        return neutral
+
+    a = tech_atr(c4)
+
+    if not a:
+        neutral["reason"] = "sin volatilidad medible"
+        return neutral
+
+    highs, lows = tech_find_swings(c4, 2, 2)
+
+    if len(highs) < 2 or len(lows) < 2:
+        neutral["reason"] = "estructura H4 sin definir"
+        return neutral
+
+    (hi_idx, last_h), (_, prev_h) = highs[-1], highs[-2]
+    (lo_idx, last_l), (_, prev_l) = lows[-1], lows[-2]
+    tol = 0.2 * a
+    close = c4[-1]["c"]
+    ema = tech_ema([c["c"] for c in c4], 50)
+
+    hh, lh = last_h > prev_h + tol, last_h < prev_h - tol
+    hl, ll = last_l > prev_l + tol, last_l < prev_l - tol
+
+    if hh and hl:
+        if close <= last_l:
+            neutral["reason"] = "estructura alcista rota (cierre bajo el último mínimo)"
+            return neutral
+        if ema is not None and close < ema - 0.5 * a:
+            neutral["reason"] = "estructura alcista pero precio bajo la EMA 50"
+            return neutral
+
+        top = max(c["h"] for c in c4[lo_idx:])
+        return {
+            "dir": "bull", "label": "Alcista (HH/HL)",
+            "range": (last_l, top), "ema": ema, "reason": ""
+        }
+
+    if lh and ll:
+        if close >= last_h:
+            neutral["reason"] = "estructura bajista rota (cierre sobre el último máximo)"
+            return neutral
+        if ema is not None and close > ema + 0.5 * a:
+            neutral["reason"] = "estructura bajista pero precio sobre la EMA 50"
+            return neutral
+
+        bottom = min(c["l"] for c in c4[hi_idx:])
+        return {
+            "dir": "bear", "label": "Bajista (LH/LL)",
+            "range": (bottom, last_h), "ema": ema, "reason": ""
+        }
+
+    neutral["reason"] = "estructura mixta (rango o transición)"
+    return neutral
+
+
+def tech_zone_overlap(a, b, tol=0.0):
+    return a["low"] <= b["high"] + tol and a["high"] >= b["low"] - tol
+
+
+def tech_h1_zones(c1, max_age=150):
+    """Zonas H1: FVG (imbalance), OB y piscinas de liquidez sin barrer."""
+
+    c1 = c1[-max_age:]
+    a = tech_atr(c1)
+
+    if not a or len(c1) < 20:
+        return [], None
+
+    n = len(c1)
+    zones = []
+
+    # Imbalances (FVG) no rellenados por completo.
+    for i in range(2, n):
+        first, third = c1[i - 2], c1[i]
+
+        gap_up = third["l"] - first["h"]
+        if gap_up >= 0.15 * a:
+            zone = {"kind": "FVG", "side": "demand", "low": first["h"], "high": third["l"],
+                    "i": i, "t": c1[i - 1]["t"]}
+            if not any(c1[j]["c"] < zone["low"] for j in range(i + 1, n)):
+                zones.append(zone)
+
+        gap_down = first["l"] - third["h"]
+        if gap_down >= 0.15 * a:
+            zone = {"kind": "FVG", "side": "supply", "low": third["h"], "high": first["l"],
+                    "i": i, "t": c1[i - 1]["t"]}
+            if not any(c1[j]["c"] > zone["high"] for j in range(i + 1, n)):
+                zones.append(zone)
+
+    # Order blocks: última vela contraria antes de un desplazamiento que rompe estructura.
+    for i in range(1, n - 1):
+        base, impulse = c1[i], c1[i + 1]
+        body = abs(impulse["c"] - impulse["o"])
+
+        if body < 1.2 * a:
+            continue
+
+        window = c1[max(0, i - 5):i]
+        if not window:
+            continue
+
+        if base["c"] < base["o"] and impulse["c"] > impulse["o"] and impulse["c"] > base["h"] \
+                and impulse["c"] > max(c["h"] for c in window):
+            zone = {"kind": "OB", "side": "demand", "low": base["l"], "high": base["h"],
+                    "i": i, "t": base["t"]}
+            if not any(c1[j]["c"] < zone["low"] for j in range(i + 2, n)):
+                zones.append(zone)
+
+        if base["c"] > base["o"] and impulse["c"] < impulse["o"] and impulse["c"] < base["l"] \
+                and impulse["c"] < min(c["l"] for c in window):
+            zone = {"kind": "OB", "side": "supply", "low": base["l"], "high": base["h"],
+                    "i": i, "t": base["t"]}
+            if not any(c1[j]["c"] > zone["high"] for j in range(i + 2, n)):
+                zones.append(zone)
+
+    # Liquidez: máximos/mínimos H1 que todavía no han sido barridos.
+    highs, lows = tech_find_swings(c1, 3, 3)
+
+    for idx, price in lows[-8:]:
+        if min(c["l"] for c in c1[idx + 1:]) < price:
+            continue
+        equal = sum(1 for _, q in lows if abs(q - price) <= 0.15 * a) >= 2
+        zones.append({"kind": "LIQ", "side": "demand", "low": price - 0.5 * a,
+                      "high": price + 0.25 * a, "level": price, "equal": equal,
+                      "i": idx, "t": c1[idx]["t"]})
+
+    for idx, price in highs[-8:]:
+        if max(c["h"] for c in c1[idx + 1:]) > price:
+            continue
+        equal = sum(1 for _, q in highs if abs(q - price) <= 0.15 * a) >= 2
+        zones.append({"kind": "LIQ", "side": "supply", "low": price - 0.25 * a,
+                      "high": price + 0.5 * a, "level": price, "equal": equal,
+                      "i": idx, "t": c1[idx]["t"]})
+
+    # Confluencia: FVG/OB solapado con liquidez (o entre sí).
+    for zone in zones:
+        zone["conf"] = any(
+            other is not zone and other["side"] == zone["side"]
+            and other["kind"] != zone["kind"]
+            and tech_zone_overlap(zone, other, 0.1 * a)
+            for other in zones
+        )
+
+    last_price = c1[-1]["c"]
+    zones = [z for z in zones if abs((z["low"] + z["high"]) / 2 - last_price) <= 8 * a]
+    zones.sort(key=lambda z: abs((z["low"] + z["high"]) / 2 - last_price))
+
+    return zones[:16], a
+
+
+def tech_next_liquidity(c1, price, direction):
+    """Máximo (arriba) o mínimo (abajo) H1 sin barrer más cercano, como referencia."""
+
+    c1 = c1[-150:]
+    highs, lows = tech_find_swings(c1, 3, 3)
+    best = None
+
+    if direction == "up":
+        for idx, p in highs:
+            if p > price and not max([c["h"] for c in c1[idx + 1:]] or [0]) > p:
+                if best is None or p < best:
+                    best = p
+    else:
+        for idx, p in lows:
+            if p < price and not min([c["l"] for c in c1[idx + 1:]] or [p + 1]) < p:
+                if best is None or p > best:
+                    best = p
+
+    return best
+
+
+# ------------------------------------------------------------
+# Rango lateral / canal en H1
+# ------------------------------------------------------------
+
+def _tech_fit_line(points):
+    n = len(points)
+    sx = sum(x for x, _ in points)
+    sy = sum(y for _, y in points)
+    sxx = sum(x * x for x, _ in points)
+    sxy = sum(x * y for x, y in points)
+    denom = n * sxx - sx * sx
+
+    if abs(denom) < 1e-12:
+        return 0.0, sy / n
+
+    slope = (n * sxy - sx * sy) / denom
+    return slope, (sy - slope * sx) / n
+
+
+def tech_line_value(line, moment):
+    return line["p0"] + line["s"] * ((moment.timestamp() - line["t0"]) / 3600.0)
+
+
+def _tech_envelope(points, tol, upper):
+    """Mejor recta que actúa como techo (o suelo) de los pivotes, con ≥2 toques."""
+
+    best = None
+
+    for i in range(len(points)):
+        for j in range(i + 1, len(points)):
+            (x1, y1), (x2, y2) = points[i], points[j]
+
+            if x2 - x1 < 3:
+                continue
+
+            slope = (y2 - y1) / (x2 - x1)
+            intercept = y1 - slope * x1
+
+            def gap(point):
+                x, y = point
+                line = slope * x + intercept
+                return (y - line) if upper else (line - y)
+
+            if any(gap(point) > tol for point in points):
+                continue
+
+            touches = [point for point in points if abs(gap(point)) <= tol]
+
+            if len(touches) < 2:
+                continue
+
+            score = (len(touches), touches[-1][0] - touches[0][0])
+
+            if best is None or score > best[0]:
+                best = (score, touches)
+
+    if best is None:
+        return None
+
+    touches = best[1]
+    slope, intercept = _tech_fit_line(touches)
+    return slope, intercept, len(touches)
+
+
+def tech_h1_channel(c1):
+    look = c1[-60:]
+    a = tech_atr(c1)
+
+    if not a or len(look) < 30:
+        return None
+
+    highs, lows = tech_find_swings(look, 2, 2)
+
+    if len(highs) < 2 or len(lows) < 2:
+        return None
+
+    t0 = look[0]["t"].timestamp()
+
+    def hours_at(moment):
+        return (moment.timestamp() - t0) / 3600.0
+
+    pts_h = [(hours_at(look[i]["t"]), p) for i, p in highs[-7:]]
+    pts_l = [(hours_at(look[i]["t"]), p) for i, p in lows[-7:]]
+
+    upper = _tech_envelope(pts_h, 0.35 * a, True)
+    lower = _tech_envelope(pts_l, 0.35 * a, False)
+
+    if not upper or not lower:
+        return None
+
+    s_h, i_h, touches_h = upper
+    s_l, i_l, touches_l = lower
+
+    # Líneas aproximadamente paralelas (rango o canal).
+    if abs(s_h - s_l) > 0.08 * a:
+        return None
+
+    x_end = hours_at(look[-1]["t"])
+    upper_now = s_h * x_end + i_h
+    lower_now = s_l * x_end + i_l
+    width = upper_now - lower_now
+
+    if not (1.2 * a <= width <= 8 * a):
+        return None
+
+    # El precio reciente debe seguir dentro de la estructura.
+    for candle in look[-6:]:
+        x = hours_at(candle["t"])
+        up, lo = s_h * x + i_h, s_l * x + i_l
+        if not (lo - 0.5 * a <= candle["c"] <= up + 0.5 * a):
+            return None
+
+    avg_slope = (s_h + s_l) / 2
+
+    if abs(avg_slope) <= 0.03 * a:
+        kind = "Rango lateral"
+    elif avg_slope > 0:
+        kind = "Canal ascendente"
+    else:
+        kind = "Canal descendente"
+
+    return {
+        "kind": kind,
+        "upper": {"t0": t0, "p0": i_h, "s": s_h},
+        "lower": {"t0": t0, "p0": i_l, "s": s_l},
+        "u_now": upper_now, "l_now": lower_now, "width": width,
+        "touches": touches_h + touches_l
+    }
+
+
+# ------------------------------------------------------------
+# Marco espejo (los cortos se analizan como largos con precios invertidos)
+# ------------------------------------------------------------
+
+def tech_mirror_candles(candles):
+    return [
+        {"t": c["t"], "o": -c["o"], "h": -c["l"], "l": -c["h"], "c": -c["c"], "v": c["v"]}
+        for c in candles
+    ]
+
+
+def tech_mirror_zone(zone):
+    mirrored = dict(zone)
+    mirrored["low"], mirrored["high"] = -zone["high"], -zone["low"]
+    mirrored["side"] = "demand" if zone["side"] == "supply" else "supply"
+
+    if "level" in zone:
+        mirrored["level"] = -zone["level"]
+
+    return mirrored
+
+
+def tech_mirror_line(line):
+    return {"t0": line["t0"], "p0": -line["p0"], "s": -line["s"]}
+
+
+# ------------------------------------------------------------
+# M5: barrido de liquidez + cierre a favor + vela de confirmación
+# ------------------------------------------------------------
+
+def tech_detect_sweep_long(c5, zones, a1):
+    """Marco 'largo': barre mínimos, recupera el nivel y confirma al alza.
+
+    Devuelve el último patrón válido, que debe completarse en las 2 últimas velas.
+    """
+
+    n = len(c5)
+
+    if n < 40 or not zones or not a1:
+        return None
+
+    a5 = tech_atr(c5)
+
+    if not a5:
+        return None
+
+    _, lows = tech_find_swings(c5, 2, 2)
+    tol = 0.15 * a1
+    vols = [c["v"] for c in c5[-60:] if c["v"] > 0]
+    avg_vol = (sum(vols) / len(vols)) if len(vols) >= 20 else 0
+
+    def evaluate(k, level, reclaim):
+        sweep = c5[k]
+        extreme = min(c["l"] for c in c5[k:reclaim + 1])
+
+        # Vela de confirmación: alcista, con cuerpo, cierra sobre el máximo de la vela de recuperación.
+        confirm = None
+
+        for idx in range(reclaim + 1, min(reclaim + 4, n)):
+            cand = c5[idx]
+            rng = cand["h"] - cand["l"]
+            body_ok = rng > 0 and (cand["c"] - cand["o"]) >= 0.4 * rng
+            no_new_low = min(c["l"] for c in c5[reclaim + 1:idx + 1]) > extreme
+
+            if cand["c"] > cand["o"] and cand["c"] > c5[reclaim]["h"] and body_ok and no_new_low:
+                confirm = idx
+                break
+
+        if confirm is None or confirm < n - 2:
+            return None
+
+        if any(c["c"] < extreme for c in c5[confirm:]):
+            return None
+
+        # El barrido debe ocurrir dentro (o sobre el borde) de una zona H1.
+        sweep_range = {"low": extreme, "high": max(c["h"] for c in c5[k:reclaim + 1])}
+        hits = [
+            z for z in zones
+            if tech_zone_overlap(sweep_range, z, tol) and extreme >= z["low"] - 0.75 * a1
+        ]
+
+        if not hits:
+            return None
+
+        hits.sort(key=lambda z: (not z.get("conf"), z["kind"] == "LIQ"))
+
+        # Estructura menor: cierre de confirmación sobre el último máximo M5 previo al barrido.
+        prior_highs = [c["h"] for c in c5[max(0, k - 12):k]]
+        choch = bool(prior_highs) and c5[confirm]["c"] > max(prior_highs[-6:])
+        vol_ok = avg_vol > 0 and max(c5[k]["v"], c5[confirm]["v"]) > 1.3 * avg_vol
+
+        return {
+            "type": "smc", "zone": hits[0], "level": level, "extreme": extreme,
+            "confirm_idx": confirm, "confirm_time": c5[confirm]["t"],
+            "choch": choch, "vol_ok": vol_ok, "vol_known": avg_vol > 0
+        }
+
+    found = None
+
+    for k in range(max(10, n - TECH_SWEEP_LOOKBACK), n - 1):
+        sweep = c5[k]
+
+        # Mínimos M5 sin barrer antes de la vela k.
+        candidates = [
+            p for idx, p in lows
+            if k - 60 <= idx <= k - 3 and min(c["l"] for c in c5[idx + 1:k]) >= p
+        ]
+
+        for level in sorted(set(candidates), reverse=True):
+            if sweep["l"] >= level - 0.02 * a5:
+                continue
+
+            # Cierre de vela a favor: la vela de barrido (o la siguiente) recupera el nivel con vela alcista.
+            reclaims = []
+
+            if sweep["c"] > level and sweep["c"] > sweep["o"]:
+                reclaims.append(k)
+
+            nxt = c5[k + 1]
+            if nxt["c"] > level and nxt["c"] > nxt["o"]:
+                reclaims.append(k + 1)
+
+            result = None
+
+            for reclaim in reclaims:
+                result = evaluate(k, level, reclaim)
+                if result:
+                    break
+
+            if result:
+                found = result
+                break
+
+    return found
+
+
+def tech_detect_smc(c5, zones, bias_dir, a1):
+    """Aplica la detección en el sentido de H4 (espejando para cortos)."""
+
+    if bias_dir == "bull":
+        result = tech_detect_sweep_long(c5, [z for z in zones if z["side"] == "demand"], a1)
+        if result:
+            result["dir"] = "bull"
+        return result
+
+    if bias_dir == "bear":
+        mirrored_zones = [tech_mirror_zone(z) for z in zones if z["side"] == "supply"]
+        result = tech_detect_sweep_long(tech_mirror_candles(c5), mirrored_zones, a1)
+
+        if not result:
+            return None
+
+        original = {id(m): z for m, z in zip(mirrored_zones, [z for z in zones if z["side"] == "supply"])}
+        result["dir"] = "bear"
+        result["level"] = -result["level"]
+        result["extreme"] = -result["extreme"]
+        result["zone"] = original.get(id(result["zone"]), result["zone"])
+        return result
+
+    return None
+
+
+# ------------------------------------------------------------
+# M5: ruptura de soporte/resistencia (rango o canal)
+# ------------------------------------------------------------
+
+def tech_detect_break_up(c5, line):
+    """Marco 'techo': ruptura real alcista o barrido (falsa ruptura) bajista."""
+
+    n = len(c5)
+
+    if n < 40:
+        return None
+
+    a5 = tech_atr(c5)
+
+    if not a5:
+        return None
+
+    found = None
+
+    for b in range(max(6, n - 10), n - 1):
+        brk, nxt = c5[b], c5[b + 1]
+        line_b = tech_line_value(line, brk["t"])
+        line_n = tech_line_value(line, nxt["t"])
+
+        if brk["h"] <= line_b + 0.02 * a5:
+            continue
+
+        # Primera ruptura: las 4 velas previas no superaron la línea.
+        if any(c5[j]["h"] > tech_line_value(line, c5[j]["t"]) for j in range(b - 4, b)):
+            continue
+
+        if b + 1 < n - 2:
+            continue
+
+        closed_above = brk["c"] > line_b + 0.1 * a5
+        closed_inside = brk["c"] <= line_b
+
+        if closed_above:
+            if (
+                nxt["c"] > nxt["o"] and nxt["c"] > brk["c"] and nxt["c"] > line_n
+                and nxt["l"] >= line_n - 0.5 * a5
+            ):
+                found = {"type": "break_real", "dir": "bull", "level": line_n,
+                         "extreme": brk["l"], "break_idx": b, "confirm_idx": b + 1,
+                         "confirm_time": nxt["t"]}
+            elif nxt["c"] < line_n and nxt["c"] < nxt["o"]:
+                found = {"type": "break_sweep", "dir": "bear", "level": line_n,
+                         "extreme": max(brk["h"], nxt["h"]), "break_idx": b,
+                         "confirm_idx": b + 1, "confirm_time": nxt["t"]}
+        elif closed_inside:
+            if nxt["c"] < nxt["o"] and nxt["c"] < brk["c"] and nxt["c"] < line_n:
+                found = {"type": "break_sweep", "dir": "bear", "level": line_b,
+                         "extreme": brk["h"], "break_idx": b, "confirm_idx": b + 1,
+                         "confirm_time": nxt["t"]}
+
+    return found
+
+
+def tech_detect_break(c5, channel, bias_dir):
+    """Busca rupturas en techo y suelo; respeta la dirección de H4."""
+
+    results = []
+
+    up = tech_detect_break_up(c5, channel["upper"])
+    if up:
+        up["boundary"] = "resistencia"
+        results.append(up)
+
+    down = tech_detect_break_up(tech_mirror_candles(c5), tech_mirror_line(channel["lower"]))
+    if down:
+        down["dir"] = "bear" if down["dir"] == "bull" else "bull"
+        down["level"] = -down["level"]
+        down["extreme"] = -down["extreme"]
+        down["boundary"] = "soporte"
+        results.append(down)
+
+    allowed = []
+
+    for item in results:
+        if bias_dir in ("bull", "bear") and item["dir"] != bias_dir:
+            continue
+        allowed.append(item)
+
+    if not allowed:
+        return None
+
+    allowed.sort(key=lambda r: r["confirm_idx"])
+    return allowed[-1]
+
+
+# ------------------------------------------------------------
+# Noticias de impacto medio/alto en el momento de la alerta
+# ------------------------------------------------------------
+
+async def tech_news_for(cfg, now):
+    """Noticias medias/altas de las divisas del activo, sólo si existen en la ventana."""
+
+    today = now.astimezone(CALENDAR_TZ).date()
+    events = []
+
+    for impact in ("high", "medium"):
+        try:
+            batch = await fetch_calendar_events(today - timedelta(days=1), today + timedelta(days=1), impact=impact)
+        except Exception as error:
+            logger.warning("Alertas técnicas: no se pudo leer el calendario (%s)", error)
+            batch = None
+
+        events.extend(batch or [])
+
+    found, seen = [], set()
+
+    for event in events:
+        impact = str(event_value(event, "impact", "importance")).lower()
+
+        if impact not in ("high", "medium"):
+            continue
+
+        if event_currency(event).upper() not in cfg["ccy"]:
+            continue
+
+        moment = event_datetime_utc(event)
+
+        if not moment:
+            continue
+
+        minutes = (moment - now).total_seconds() / 60
+
+        if not (-TECH_NEWS_BEHIND_MINUTES <= minutes <= TECH_NEWS_AHEAD_MINUTES):
+            continue
+
+        key = (str(event_value(event, "name", "title", "event")), event_currency(event), moment.isoformat())
+
+        if key in seen:
+            continue
+
+        seen.add(key)
+        found.append((moment, minutes, impact, event))
+
+    found.sort(key=lambda item: (item[2] != "high", abs(item[1])))
+    return sorted(found[:3], key=lambda item: item[0])
+
+
+def tech_news_lines(news):
+    if not news:
+        return [], False
+
+    lines = ["📰 <b>Noticia en la ventana</b>"]
+    danger = False
+
+    for moment, minutes, impact, event in news:
+        name = str(event_value(event, "name", "title", "event") or "Evento económico")
+        icon = "🔴" if impact == "high" else "🟠"
+        label = "alto" if impact == "high" else "medio"
+
+        if minutes > 1:
+            when = f"en ~{int(round(minutes))} min"
+        elif minutes >= -1:
+            when = "publicándose ahora"
+        else:
+            when = f"hace ~{int(round(-minutes))} min"
+
+        extra = []
+        consensus = event_value(event, "consensus", "forecast", "expected")
+        prior = event_value(event, "prior", "previous")
+        actual = event_value(event, "actual")
+
+        if actual:
+            extra.append(f"actual {escape(str(actual))}")
+        if consensus:
+            extra.append(f"consenso {escape(str(consensus))}")
+        if prior:
+            extra.append(f"anterior {escape(str(prior))}")
+
+        tail = f" ({' · '.join(extra)})" if extra else ""
+        lines.append(
+            f"{icon} <b>{escape(event_currency(event).upper() or 'N/D')}</b> · {escape(name)} "
+            f"— impacto {label}, {when}{tail}"
+        )
+
+        if impact == "high" and -TECH_NEWS_DANGER_MINUTES <= minutes <= TECH_NEWS_DANGER_MINUTES:
+            danger = True
+
+    if danger:
+        lines.append(
+            "⛔ <b>Riesgo elevado:</b> hay un evento de alto impacto muy cerca. "
+            "El precio puede barrer niveles en ambos sentidos y los patrones técnicos pierden fiabilidad."
+        )
+    else:
+        lines.append(
+            "ℹ️ Las noticias pueden aumentar la volatilidad y invalidar el escenario técnico."
+        )
+
+    return lines, danger
+
+
+# ------------------------------------------------------------
+# Mensaje de la alerta
+# ------------------------------------------------------------
+
+def tech_session_open(cfg, now):
+    if cfg["kind"] == "crypto":
+        return True
+
+    if now.weekday() >= 5:
+        return False
+
+    return TECH_ACTIVE_START_UTC <= now.hour < TECH_ACTIVE_END_UTC
+
+
+def tech_session_bonus(cfg, now):
+    if cfg["kind"] == "crypto":
+        return True
+
+    return now.weekday() < 5 and 7 <= now.hour < 17
+
+
+def tech_tradingview_url(cfg, interval="5"):
+    return "https://www.tradingview.com/chart/?" + urlencode({"symbol": cfg["tv"], "interval": interval})
+
+
+def tech_zone_text(zone, fmt):
+    names = {"FVG": "Imbalance (FVG)", "OB": "Order Block (OB)", "LIQ": "Liquidez"}
+    side = "demanda" if zone["side"] == "demand" else "oferta"
+    text = f"{names.get(zone['kind'], zone['kind'])} de {side} {fmt(zone['low'])}–{fmt(zone['high'])}"
+
+    if zone["kind"] == "LIQ":
+        what = "mínimos" if zone["side"] == "demand" else "máximos"
+        equal = " (equal " + ("lows" if zone["side"] == "demand" else "highs") + ")" if zone.get("equal") else ""
+        text = f"Liquidez de {what} H1 en {fmt(zone['level'])}{equal}"
+    elif zone.get("conf"):
+        text += " + confluencia de liquidez"
+
+    return text
+
+
+def build_tech_alert(name, cfg, setup, bias, price, ref_liquidity, news_lines, now):
+    digits = cfg["digits"]
+
+    def fmt(value):
+        return f"{value:.{digits}f}"
+
+    bull = setup["dir"] == "bull"
+    arrow = "🟢" if bull else "🔴"
+    scenario = "alcista" if bull else "bajista"
+    h4_text = bias.get("label") or "Neutral / rango"
+
+    if setup["type"] == "smc":
+        title = "ALERTA TÉCNICA · BARRIDO DE LIQUIDEZ EN ZONA H1"
+        what_swept = "mínimos" if bull else "máximos"
+        lines = [
+            f"🔔 <b>{title}</b>",
+            "",
+            f"{cfg['emoji']} <b>{escape(name)}</b> · {arrow} Escenario {scenario} a favor de H4",
+            _alert_time_line(now),
+            "",
+            f"📊 <b>H4 (dirección):</b> {escape(h4_text)}",
+            f"💧 <b>H1 (zona):</b> {escape(tech_zone_text(setup['zone'], fmt))}",
+            "",
+            "⚡ <b>M5 (entrada/POI):</b>",
+            f"✅ Barrido de liquidez de {what_swept} en {fmt(setup['extreme'])} "
+            f"(nivel barrido: {fmt(setup['level'])})",
+            "✅ Cierre de vela a favor recuperando el nivel",
+            f"✅ Vela de confirmación {scenario} ({setup['confirm_time']:%H:%M} UTC)"
+        ]
+    else:
+        real = setup["type"] == "break_real"
+        title = (
+            "ALERTA TÉCNICA · RUPTURA CONFIRMADA"
+            if real else "ALERTA TÉCNICA · BARRIDO EN SOPORTE/RESISTENCIA"
+        )
+        channel = setup.get("channel_kind", "Rango")
+        boundary = setup.get("boundary", "nivel")
+
+        if real:
+            detail = (
+                f"✅ Ruptura de la {boundary} ({fmt(setup['level'])}) con cierre de vela fuera del {channel.lower()}",
+                f"✅ Vela de continuación {scenario} que se mantiene fuera"
+            )
+        else:
+            detail = (
+                f"✅ Mecha/ruptura de la {boundary} ({fmt(setup['level'])}) que NO se sostiene: barrido de liquidez",
+                f"✅ Cierre de vela de vuelta dentro y vela de continuación {scenario}"
+            )
+
+        lines = [
+            f"🔔 <b>{title}</b>",
+            "",
+            f"{cfg['emoji']} <b>{escape(name)}</b> · {arrow} Escenario {scenario}",
+            _alert_time_line(now),
+            "",
+            f"📊 <b>H4 (dirección):</b> {escape(h4_text)}",
+            f"📐 <b>H1:</b> {escape(channel)} "
+            f"({fmt(setup['l_now'])} – {fmt(setup['u_now'])})",
+            "",
+            "⚡ <b>M5:</b>",
+            detail[0],
+            detail[1]
+        ]
+
+    extras = []
+
+    if setup.get("choch"):
+        extras.append("cambio de estructura menor (CHoCH/BOS) en M5")
+    if setup.get("vol_ok"):
+        extras.append("volumen por encima de la media")
+    if setup.get("pd_ok"):
+        extras.append("precio en " + ("descuento" if bull else "premium") + " del rango H4")
+    if setup.get("zone_conf"):
+        extras.append("zona con confluencia (OB/FVG + liquidez)")
+    if setup.get("session_ok"):
+        extras.append("sesión de alta liquidez")
+    if setup.get("quality_ok"):
+        extras.append("rango/canal bien definido (≥6 toques)")
+
+    lines.append("")
+    lines.append(f"🎯 <b>Confluencias:</b> {setup['score']}/{setup['score_max']}")
+
+    if extras:
+        lines.append("➕ " + " · ".join(extras))
+
+    lines.extend([
+        "",
+        "📍 <b>Niveles de referencia</b> (informativos)",
+        f"• Precio actual: <b>{fmt(price)}</b>",
+        f"• Nivel que invalida el escenario: {'bajo' if bull else 'sobre'} <b>{fmt(setup['extreme'])}</b>"
+    ])
+
+    if ref_liquidity is not None:
+        lines.append(
+            f"• Liquidez H1 cercana: {fmt(ref_liquidity)} "
+            f"({'máximos' if bull else 'mínimos'} sin barrer)"
+        )
+
+    if news_lines:
+        lines.append("")
+        lines.extend(news_lines)
+
+    lines.extend([
+        "",
+        TECH_RISK_BASE,
+        f"📌 {escape(cfg['risk'])}",
+        "",
+        '📊 Datos: <a href="https://twelvedata.com">Twelve Data</a>'
+    ])
+
+    return "\n".join(lines)[:4000]
+
+
+# ------------------------------------------------------------
+# Control de envío (duplicados, enfriamiento y topes diarios)
+# ------------------------------------------------------------
+
+def tech_can_send(name, key, now):
+    _tech_roll_day()
+
+    if key in TECH_STATE["sent"]:
+        return False, "duplicada"
+
+    last = TECH_STATE["last_alert"].get(name)
+
+    if last:
+        try:
+            elapsed = (now - datetime.fromisoformat(last)).total_seconds() / 60
+            if elapsed < TECH_COOLDOWN_MINUTES:
+                return False, f"enfriamiento ({int(TECH_COOLDOWN_MINUTES - elapsed)} min)"
+        except ValueError:
+            pass
+
+    daily = TECH_STATE["daily"]
+
+    if daily.get("total", 0) >= TECH_MAX_PER_DAY:
+        return False, "tope diario alcanzado"
+
+    if daily.get("by_symbol", {}).get(name, 0) >= TECH_MAX_PER_SYMBOL_DAY:
+        return False, "tope diario del activo"
+
+    return True, ""
+
+
+def tech_register_sent(name, key, setup, now):
+    TECH_STATE["sent"][key] = now.isoformat()
+    TECH_STATE["last_alert"][name] = now.isoformat()
+    daily = TECH_STATE["daily"]
+    daily["total"] = daily.get("total", 0) + 1
+    daily.setdefault("by_symbol", {})[name] = daily.get("by_symbol", {}).get(name, 0) + 1
+    TECH_STATE["history"].append({
+        "t": now.isoformat(), "symbol": name, "type": setup["type"], "dir": setup["dir"]
+    })
+
+
+async def tech_notify_admin_once(application, key, text):
+    _tech_roll_day()
+    full_key = f"{key}|{_tech_today()}"
+
+    if full_key in TECH_STATE["notified"] or not ADMIN_TELEGRAM_ID:
+        return
+
+    TECH_STATE["notified"][full_key] = True
+
+    try:
+        await application.bot.send_message(chat_id=ADMIN_TELEGRAM_ID, text=text, parse_mode="HTML")
+    except Exception as error:
+        logger.warning("No se pudo avisar al administrador: %s", error)
+
+
+async def tech_publish(application, text, url):
+    channel_id = get_community_channel_id()
+
+    if not channel_id:
+        raise TechDataError("el canal todavía no está detectado")
+
+    markup = InlineKeyboardMarkup([[InlineKeyboardButton("📈 Abrir gráfico (TradingView)", url=url)]])
+
+    for attempt in range(2):
+        try:
+            await application.bot.send_message(
+                chat_id=channel_id, text=text, parse_mode="HTML",
+                disable_web_page_preview=True, reply_markup=markup
+            )
+            return
+        except RetryAfter as error:
+            if attempt == 1:
+                raise
+            await asyncio.sleep(float(getattr(error, "retry_after", 5)) + 1)
+
+
+# ------------------------------------------------------------
+# Escaneo por activo
+# ------------------------------------------------------------
+
+async def tech_refresh(name, cfg, frame):
+    rt = TECH_RUNTIME.setdefault(name, {})
+    spec = {"h4": ("4h", 14400, 160), "h1": ("1h", 3600, 200), "m5": ("5min", 300, 150)}[frame]
+    candles = await td_get_candles(cfg["td"], spec[0], spec[2])
+    rt[frame] = tech_closed_candles(candles, spec[1])
+    rt[frame + "_ts"] = time.time()
+    return rt[frame]
+
+
+def tech_price_is_near(rt, price):
+    a1 = rt.get("a1")
+
+    if not a1 or price is None:
+        return False
+
+    bias = rt.get("bias") or {}
+    want = {"bull": "demand", "bear": "supply"}.get(bias.get("dir"))
+
+    for zone in rt.get("zones", []):
+        if want and zone["side"] != want:
+            continue
+        if zone["low"] - 1.0 * a1 <= price <= zone["high"] + 1.0 * a1:
+            return True
+
+    channel = rt.get("channel")
+
+    if channel and (
+        abs(price - channel["u_now"]) <= a1 or abs(price - channel["l_now"]) <= a1
+    ):
+        return True
+
+    return False
+
+
+def tech_score_smc(cfg, setup, bias, price, now):
+    parts = 0
+    maximum = 4 + (1 if setup["vol_known"] else 0)
+    zone = setup["zone"]
+
+    setup["zone_conf"] = bool(zone.get("conf") or zone["kind"] in ("OB", "FVG"))
+    setup["session_ok"] = tech_session_bonus(cfg, now)
+    setup["pd_ok"] = False
+
+    rng = bias.get("range")
+    if rng and rng[1] > rng[0]:
+        eq = (rng[0] + rng[1]) / 2
+        setup["pd_ok"] = price <= eq if setup["dir"] == "bull" else price >= eq
+
+    for flag in (setup["zone_conf"], setup["session_ok"], setup["pd_ok"], setup.get("choch")):
+        parts += 1 if flag else 0
+
+    if setup["vol_known"] and setup["vol_ok"]:
+        parts += 1
+
+    setup["score"], setup["score_max"] = parts, maximum
+    return parts
+
+
+def tech_score_break(cfg, setup, bias, channel, c5, now):
+    avg = [c["v"] for c in c5[-60:] if c["v"] > 0]
+    avg_vol = (sum(avg) / len(avg)) if len(avg) >= 20 else 0
+    known = avg_vol > 0
+    maximum = 3 + (1 if known else 0)
+    parts = 0
+
+    setup["session_ok"] = tech_session_bonus(cfg, now)
+    setup["quality_ok"] = channel["touches"] >= 6
+    aligned = bias.get("dir") == setup["dir"]
+    setup["pd_ok"] = False
+    setup["vol_known"] = known
+    setup["vol_ok"] = known and max(
+        c5[setup["break_idx"]]["v"], c5[setup["confirm_idx"]]["v"]
+    ) > 1.3 * avg_vol
+
+    for flag in (setup["session_ok"], setup["quality_ok"], aligned):
+        parts += 1 if flag else 0
+
+    if known and setup["vol_ok"]:
+        parts += 1
+
+    setup["score"], setup["score_max"] = parts, maximum
+    setup["channel_kind"] = channel["kind"]
+    setup["u_now"], setup["l_now"] = channel["u_now"], channel["l_now"]
+    return parts
+
+
+async def tech_scan_symbol(application, name, force=False):
+    cfg = TECH_SYMBOLS[name]
+    rt = TECH_RUNTIME.setdefault(name, {})
+    now = datetime.now(timezone.utc)
+
+    disabled = TECH_STATE["disabled"].get(name)
+
+    if disabled and disabled.get("until", 0) > time.time():
+        rt["status"] = f"⏸️ en pausa: {disabled.get('reason', '')[:60]}"
+        return
+
+    if not force and not tech_session_open(cfg, now):
+        rt["status"] = "🌙 fuera del horario de análisis"
+        return
+
+    try:
+        if force or time.time() - rt.get("h4_ts", 0) > TECH_H4_TTL_SECONDS:
+            c4 = await tech_refresh(name, cfg, "h4")
+            rt["bias"] = tech_h4_bias(c4)
+
+        if force or time.time() - rt.get("h1_ts", 0) > TECH_H1_TTL_SECONDS:
+            c1 = await tech_refresh(name, cfg, "h1")
+            rt["zones"], rt["a1"] = tech_h1_zones(c1)
+            rt["channel"] = tech_h1_channel(c1)
+    except TechSymbolError as error:
+        TECH_STATE["disabled"][name] = {"until": time.time() + 6 * 3600, "reason": str(error)}
+        rt["status"] = f"⛔ símbolo no disponible: {str(error)[:80]}"
+        await tech_notify_admin_once(
+            application, f"symbol|{name}",
+            f"⚠️ <b>Alertas técnicas:</b> no se pudo leer <b>{escape(name)}</b> "
+            f"en Twelve Data (<code>{escape(cfg['td'])}</code>).\n"
+            f"<i>{escape(str(error)[:200])}</i>\n\n"
+            "Puede requerir otro plan o símbolo (variable TECH_SYMBOL_US30 para el índice). "
+            "Se reintenta en 6 horas."
+        )
+        return
+    except TechRateLimit:
+        rt["status"] = "⏳ límite por minuto de Twelve Data; se reintenta"
+        await asyncio.sleep(30)
+        return
+
+    bias = rt.get("bias") or {"dir": "neutral", "label": "Neutral / rango"}
+    channel = rt.get("channel")
+    zones = rt.get("zones") or []
+    h1_candles = rt.get("h1") or []
+
+    if bias["dir"] == "neutral" and not channel:
+        rt["status"] = f"⚪ H4 neutral ({bias.get('reason', 'sin sesgo')}) y sin rango/canal H1 · en espera"
+        return
+
+    last_price = rt["m5"][-1]["c"] if rt.get("m5") else (h1_candles[-1]["c"] if h1_candles else None)
+    near = tech_price_is_near(rt, last_price)
+    interval = TECH_M5_NEAR_SECONDS if near else TECH_M5_FAR_SECONDS
+
+    if not force and time.time() - rt.get("m5_ts", 0) < interval:
+        return
+
+    c5 = await tech_refresh(name, cfg, "m5")
+
+    if not c5 or (now - c5[-1]["t"]).total_seconds() > 25 * 60:
+        rt["status"] = "💤 sin velas M5 recientes (mercado cerrado o datos retrasados)"
+        return
+
+    price = c5[-1]["c"]
+    near = tech_price_is_near(rt, price)
+    candidates = []
+
+    if bias["dir"] in ("bull", "bear") and zones:
+        setup = tech_detect_smc(c5, zones, bias["dir"], rt.get("a1"))
+        if setup:
+            tech_score_smc(cfg, setup, bias, price, now)
+            candidates.append(setup)
+
+    if channel:
+        setup = tech_detect_break(c5, channel, bias["dir"])
+        if setup:
+            tech_score_break(cfg, setup, bias, channel, c5, now)
+            candidates.append(setup)
+
+    state_icon = {"bull": "🟢", "bear": "🔴"}.get(bias["dir"], "⚪")
+    extra = f" · {channel['kind'].lower()} H1" if channel else ""
+    rt["status"] = (
+        f"{state_icon} H4 {bias.get('label', '')} · {len(zones)} zonas H1{extra} · "
+        f"M5 {'cerca de zona' if near else 'lejos de zonas'}, en espera"
+    )
+
+    if not candidates:
+        return
+
+    candidates.sort(key=lambda s: (s["score"], s["confirm_idx"]), reverse=True)
+    setup = candidates[0]
+
+    if setup["score"] < TECH_MIN_SCORE:
+        rt["status"] += f" · patrón detectado sin confluencias suficientes ({setup['score']}/{setup['score_max']})"
+        return
+
+    key = f"{name}|{setup['type']}|{setup['dir']}|{setup['confirm_time'].isoformat()}"
+    allowed, reason = tech_can_send(name, key, now)
+
+    if not allowed:
+        rt["status"] += f" · alerta no enviada: {reason}"
+        return
+
+    news = await tech_news_for(cfg, now)
+    news_lines, _ = tech_news_lines(news)
+    ref = tech_next_liquidity(h1_candles, price, "up" if setup["dir"] == "bull" else "down")
+    text = build_tech_alert(name, cfg, setup, bias, price, ref, news_lines, now)
+
+    try:
+        await tech_publish(application, text, tech_tradingview_url(cfg))
+    except Exception as error:
+        logger.error("No se pudo publicar la alerta técnica de %s: %s", name, error)
+        rt["status"] += f" · error al publicar: {str(error)[:60]}"
+        return
+
+    tech_register_sent(name, key, setup, now)
+    tech_state_save()
+    rt["status"] = f"✅ alerta enviada ({setup['type']}, {setup['dir']})"
+    logger.info("🔔 Alerta técnica enviada: %s %s %s", name, setup["type"], setup["dir"])
+
+
+async def tech_scan_all(application, force=False):
+    for name in TECH_SYMBOLS:
+        try:
+            await tech_scan_symbol(application, name, force=force)
+        except asyncio.CancelledError:
+            raise
+        except TechBudgetError:
+            TECH_RUNTIME.setdefault(name, {})["status"] = "📉 presupuesto diario de Twelve Data agotado"
+            await tech_notify_admin_once(
+                application, "budget",
+                "⚠️ <b>Alertas técnicas:</b> se agotó el presupuesto diario de Twelve Data. "
+                "El análisis se reanuda a las 00:00 UTC."
+            )
+            break
+        except TechDataError as error:
+            TECH_RUNTIME.setdefault(name, {})["status"] = f"⚠️ {str(error)[:90]}"
+            logger.warning("Alertas técnicas %s: %s", name, error)
+        except Exception as error:
+            TECH_RUNTIME.setdefault(name, {})["status"] = f"⚠️ error interno: {str(error)[:80]}"
+            logger.error("Alertas técnicas %s: %s", name, error, exc_info=True)
+
+    tech_state_save()
+
+
+async def tech_alerts_monitor(application):
+    tech_state_load()
+
+    if not TWELVEDATA_API_KEY:
+        logger.warning("Alertas técnicas desactivadas: falta TWELVEDATA_API_KEY.")
+
+    await asyncio.sleep(15)
+
+    while True:
+        try:
+            if TWELVEDATA_API_KEY and TECH_STATE.get("enabled", True):
+                await tech_scan_all(application)
+        except asyncio.CancelledError:
+            raise
+        except Exception as error:
+            logger.error("Error en el monitor de alertas técnicas: %s", error, exc_info=True)
+
+        await asyncio.sleep(TECH_TICK_SECONDS)
+
+
+# ------------------------------------------------------------
+# Administración de las alertas técnicas
+# ------------------------------------------------------------
+
+def tech_admin_keyboard():
+    enabled = TECH_STATE.get("enabled", True)
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("🔄 Actualizar estado", callback_data="admin_tech")],
+        [InlineKeyboardButton("🔎 Escanear ahora", callback_data="admin_tech_scan")],
+        [InlineKeyboardButton("⏸️ Pausar alertas" if enabled else "▶️ Activar alertas",
+                              callback_data="admin_tech_toggle")],
+        [InlineKeyboardButton("🔙 Administración", callback_data="admin_menu")]
+    ])
+
+
+async def show_admin_tech(query):
+    if not is_admin(query.from_user.id):
+        await query.answer("⛔ Acceso restringido.", show_alert=True)
+        return
+
+    _tech_roll_day()
+    enabled = TECH_STATE.get("enabled", True)
+    daily = TECH_STATE["daily"]
+
+    lines = [
+        "🧭 <b>ALERTAS TÉCNICAS APEXQUANT</b>",
+        "",
+        f"Estado: {'🟢 activas' if enabled else '⏸️ en pausa'}"
+        + ("" if TWELVEDATA_API_KEY else " · ⚠️ falta TWELVEDATA_API_KEY"),
+        f"📡 Créditos Twelve Data hoy: <b>{tech_budget_used()}/{TD_DAILY_BUDGET}</b>",
+        f"🔔 Alertas hoy: <b>{daily.get('total', 0)}/{TECH_MAX_PER_DAY}</b> "
+        f"(máx. {TECH_MAX_PER_SYMBOL_DAY} por activo)",
+        f"🎚️ Confluencias mínimas: {TECH_MIN_SCORE} · enfriamiento: {TECH_COOLDOWN_MINUTES} min",
+        f"🕒 Horario de análisis (UTC, lun–vie): {TECH_ACTIVE_START_UTC:02d}:00–{TECH_ACTIVE_END_UTC:02d}:00 · BTC 24/7",
+        ""
+    ]
+
+    for name, cfg in TECH_SYMBOLS.items():
+        rt = TECH_RUNTIME.get(name, {})
+        lines.append(f"{cfg['emoji']} <b>{escape(name)}</b>: {escape(rt.get('status', 'sin análisis todavía'))}")
+
+    history = TECH_STATE.get("history", [])[-3:]
+
+    if history:
+        lines.append("")
+        lines.append("🕘 <b>Últimas alertas</b>")
+        for item in reversed(history):
+            lines.append(f"• {escape(str(item.get('t', ''))[:16].replace('T', ' '))} UTC · "
+                         f"{escape(str(item.get('symbol')))} · {escape(str(item.get('type')))} · {escape(str(item.get('dir')))}")
+
+    try:
+        await query.edit_message_text(
+            "\n".join(lines)[:4000], parse_mode="HTML", reply_markup=tech_admin_keyboard()
+        )
+    except BadRequest as error:
+        if "not modified" in str(error).lower():
+            await query.answer("Sin cambios desde la última actualización.")
+        else:
+            raise
+
+
+async def admin_tech_toggle(query):
+    if not is_admin(query.from_user.id):
+        await query.answer("⛔ Acceso restringido.", show_alert=True)
+        return
+
+    TECH_STATE["enabled"] = not TECH_STATE.get("enabled", True)
+    tech_state_save()
+    await show_admin_tech(query)
+
+
+async def admin_tech_scan(query, context):
+    if not is_admin(query.from_user.id):
+        await query.answer("⛔ Acceso restringido.", show_alert=True)
+        return
+
+    if not TWELVEDATA_API_KEY:
+        await query.edit_message_text(
+            "⚠️ Falta la variable TWELVEDATA_API_KEY en Deployka.",
+            reply_markup=tech_admin_keyboard()
+        )
+        return
+
+    await query.edit_message_text(
+        "🔎 Escaneo iniciado en segundo plano. Consume unos 15 créditos de Twelve Data y "
+        "puede tardar 1–3 minutos por el límite por minuto.\n\n"
+        "Pulsa «Actualizar estado» para ver el resultado.",
+        reply_markup=tech_admin_keyboard()
+    )
+
+    task = asyncio.create_task(tech_scan_all(context.application, force=True))
+    _TECH_TASKS.add(task)
+    task.add_done_callback(_TECH_TASKS.discard)
 
 
 # ============================================================
@@ -5313,6 +6958,15 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data == "admin_broadcast_cancel":
             await admin_broadcast_cancel(query, context)
             return
+        if data == "admin_tech":
+            await show_admin_tech(query)
+            return
+        if data == "admin_tech_toggle":
+            await admin_tech_toggle(query)
+            return
+        if data == "admin_tech_scan":
+            await admin_tech_scan(query, context)
+            return
         if data == "admin_community_stats":
             await admin_stats(query)
             return
@@ -5364,7 +7018,9 @@ async def error_handler(
 
 async def post_init(application):
     application.create_task(community_high_impact_monitor(application), name="apexquant_high_impact_monitor")
-    logger.info("🚨 Monitor de eventos de alto impacto iniciado.")
+    logger.info("🚨 Monitor de eventos de alto y medio impacto iniciado.")
+    application.create_task(tech_alerts_monitor(application), name="apexquant_tech_alerts")
+    logger.info("🧭 Monitor de alertas técnicas iniciado (requiere TWELVEDATA_API_KEY).")
 
 
 def main():
