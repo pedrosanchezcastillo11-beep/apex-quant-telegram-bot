@@ -4406,6 +4406,9 @@ TECH_SYMBOLS = {
     },
     "US30": {
         "td": os.getenv("TECH_SYMBOL_US30", "DJI").strip() or "DJI",
+        # Alternativas gratuitas si el índice no está en el plan: ETF DIA (≈ Dow / 100)
+        "td_alts": [(os.getenv("TECH_SYMBOL_US30_ALT", "DIA").strip() or "DIA",
+                     _env_num("TECH_US30_ALT_SCALE", 100.0, float))],
         "tv": "OANDA:US30USD", "digits": 1, "ccy": ("USD",),
         "kind": "index", "emoji": "🏛️",
         "risk": "Es un índice: puede abrir con gaps y reaccionar con fuerza a datos de EE. UU. y resultados de empresas."
@@ -4472,8 +4475,10 @@ def tech_state_load():
     data.setdefault("daily", {"day": _tech_today(), "total": 0, "by_symbol": {}})
     data.setdefault("last_alert", {})
     data.setdefault("history", [])
-    data.setdefault("disabled", {})
+    data["disabled"] = {}  # al reiniciar/desplegar se reintentan los activos pausados por error de símbolo
     data.setdefault("notified", {})
+    data.setdefault("td_sym", {})   # símbolo de Twelve Data que funciona por activo
+    data.setdefault("td_bad", {})   # símbolos que fallaron (pausa temporal)
     TECH_STATE = data
     return data
 
@@ -5486,6 +5491,13 @@ def build_tech_alert(name, cfg, setup, bias, price, ref_liquidity, news_lines, n
         lines.append("")
         lines.extend(news_lines)
 
+    if tech_symbol_scale(name, cfg) != 1.0:
+        lines.extend([
+            "",
+            f"ℹ️ Niveles aproximados (referencia {escape(str(TECH_STATE.get('td_sym', {}).get(name, '')))}"
+            f" ×{tech_symbol_scale(name, cfg):g}); contrasta con tu gráfico y tu broker."
+        ])
+
     lines.extend([
         "",
         TECH_RISK_BASE,
@@ -5579,13 +5591,65 @@ async def tech_publish(application, text, url):
 # Escaneo por activo
 # ------------------------------------------------------------
 
+def tech_symbol_candidates(name, cfg):
+    """Símbolos a probar para un activo: primero el que ya funcionó, luego el resto."""
+    items = [(cfg["td"], 1.0)] + [(sym, float(k)) for sym, k in cfg.get("td_alts", [])]
+    good = TECH_STATE.get("td_sym", {}).get(name)
+    items.sort(key=lambda it: 0 if it[0] == good else 1)
+    bad = TECH_STATE.get("td_bad", {})
+    now = time.time()
+    live = [it for it in items if bad.get(f"{name}|{it[0]}", 0) <= now]
+    return live or items
+
+
+def tech_symbol_scale(name, cfg):
+    """Factor de escala del símbolo en uso (1.0 = símbolo directo)."""
+    used = TECH_STATE.get("td_sym", {}).get(name)
+    for sym, k in cfg.get("td_alts", []):
+        if sym == used:
+            return float(k)
+    return 1.0
+
+
+def tech_scale_candles(candles, scale):
+    if not scale or scale == 1.0:
+        return candles
+    return [
+        {**c, "o": c["o"] * scale, "h": c["h"] * scale, "l": c["l"] * scale, "c": c["c"] * scale}
+        for c in candles
+    ]
+
+
 async def tech_refresh(name, cfg, frame):
     rt = TECH_RUNTIME.setdefault(name, {})
     spec = {"h4": ("4h", 14400, 160), "h1": ("1h", 3600, 200), "m5": ("5min", 300, 150)}[frame]
-    candles = await td_get_candles(cfg["td"], spec[0], spec[2])
-    rt[frame] = tech_closed_candles(candles, spec[1])
-    rt[frame + "_ts"] = time.time()
-    return rt[frame]
+    errors = []
+
+    for symbol, scale in tech_symbol_candidates(name, cfg):
+        try:
+            candles = await td_get_candles(symbol, spec[0], spec[2])
+        except TechSymbolError as error:
+            errors.append(f"{symbol}: {str(error)[:90]}")
+            TECH_STATE["td_bad"][f"{name}|{symbol}"] = time.time() + 5 * 3600
+            logger.warning("Twelve Data: %s no disponible para %s (%s)", symbol, name, error)
+            continue
+
+        if rt.get("td_used") not in (None, symbol):
+            # Cambió la fuente de datos: se descartan velas y zonas calculadas con la anterior
+            for key in ("h4", "h1", "m5", "h4_ts", "h1_ts", "m5_ts", "bias", "zones", "channel", "a1"):
+                rt.pop(key, None)
+
+        rt["td_used"] = symbol
+        if TECH_STATE.get("td_sym", {}).get(name) != symbol:
+            TECH_STATE.setdefault("td_sym", {})[name] = symbol
+            tech_state_save()
+            logger.info("Twelve Data: %s usa el símbolo %s (escala %s)", name, symbol, scale)
+
+        rt[frame] = tech_closed_candles(tech_scale_candles(candles, scale), spec[1])
+        rt[frame + "_ts"] = time.time()
+        return rt[frame]
+
+    raise TechSymbolError(" | ".join(errors) or "sin símbolo disponible")
 
 
 def tech_price_is_near(rt, price):
@@ -5695,9 +5759,10 @@ async def tech_scan_symbol(application, name, force=False):
         await tech_notify_admin_once(
             application, f"symbol|{name}",
             f"⚠️ <b>Alertas técnicas:</b> no se pudo leer <b>{escape(name)}</b> "
-            f"en Twelve Data (<code>{escape(cfg['td'])}</code>).\n"
+            f"en Twelve Data (probado: <code>"
+            f"{escape(', '.join([cfg['td']] + [a for a, _ in cfg.get('td_alts', [])]))}</code>).\n"
             f"<i>{escape(str(error)[:200])}</i>\n\n"
-            "Puede requerir otro plan o símbolo (variable TECH_SYMBOL_US30 para el índice). "
+            "Puede requerir otro plan o símbolo (variables TECH_SYMBOL_US30 / TECH_SYMBOL_US30_ALT). "
             "Se reintenta en 6 horas."
         )
         return
@@ -5869,7 +5934,12 @@ async def show_admin_tech(query):
 
     for name, cfg in TECH_SYMBOLS.items():
         rt = TECH_RUNTIME.get(name, {})
-        lines.append(f"{cfg['emoji']} <b>{escape(name)}</b>: {escape(rt.get('status', 'sin análisis todavía'))}")
+        source = ""
+        if tech_symbol_scale(name, cfg) != 1.0:
+            source = f" · fuente: {TECH_STATE.get('td_sym', {}).get(name, '')} ×{tech_symbol_scale(name, cfg):g}"
+        lines.append(
+            f"{cfg['emoji']} <b>{escape(name)}</b>: {escape(rt.get('status', 'sin análisis todavía'))}{escape(source)}"
+        )
 
     history = TECH_STATE.get("history", [])[-3:]
 
