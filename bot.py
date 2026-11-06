@@ -4368,6 +4368,16 @@ async def community_high_impact_monitor(application):
 #   S/R : en rangos o canales, ruptura → cierre de vela (ruptura real o barrido)
 #         → vela de continuación.
 # Son ALERTAS informativas: no son señales ni recomendaciones de entrada.
+#
+# Reglas de la zona de entrada (M5 dentro de la zona H1):
+#   • FVG no amplio  → referencia = 50% del FVG (el barrido debe haberlo alcanzado).
+#   • FVG amplio     → referencia = order block bajo el FVG (sobre él en cortos).
+#   • Varios FVG     → se toma el más alejado como referencia.
+#   • Filtros: zona fresca, cambio de estructura M5 a favor de H4, precio en
+#     descuento/premium del rango H4, riesgo máximo hasta la invalidación, sin
+#     noticia de alto impacto inminente y una alerta por zona (enfriamiento).
+#   • Fase 2: ventana de sesión por tipo de activo, relación riesgo/beneficio mínima
+#     hasta la siguiente liquidez de H1 y nota de calidad A/B/C (sólo se envían A y B).
 
 TWELVEDATA_API_KEY = _clean_key(os.getenv("TWELVEDATA_API_KEY"))
 TWELVEDATA_TS_URL = "https://api.twelvedata.com/time_series"
@@ -4392,6 +4402,53 @@ TECH_SWEEP_LOOKBACK = 18        # velas M5 (~90 min) en las que se busca el barr
 TECH_NEWS_AHEAD_MINUTES = _env_num("TECH_NEWS_AHEAD_MINUTES", 240, int)
 TECH_NEWS_BEHIND_MINUTES = _env_num("TECH_NEWS_BEHIND_MINUTES", 60, int)
 TECH_NEWS_DANGER_MINUTES = 30   # noticia roja a menos de este margen = riesgo elevado
+
+# --- Precisión de las alertas (se pueden relajar desde Deployka sin tocar el código) ---
+TECH_FVG_WIDE_ATR = _env_num("TECH_FVG_WIDE_ATR", 1.0, float)        # FVG más ancho que esto (× ATR H1) = amplio
+TECH_FVG_FARTHEST = _env_flag("TECH_FVG_FARTHEST", True)              # varios FVG: usar el más alejado
+TECH_MAX_RISK_ATR = _env_num("TECH_MAX_RISK_ATR", 1.5, float)        # máx. distancia entrada→invalidación (× ATR H1)
+TECH_REQUIRE_FRESH = _env_flag("TECH_REQUIRE_FRESH", True)            # sólo zonas H1 no visitadas antes
+TECH_REQUIRE_PD = _env_flag("TECH_REQUIRE_PD", True)                  # descuento (largos) / premium (cortos) del rango H4
+TECH_REQUIRE_CHOCH = _env_flag("TECH_REQUIRE_CHOCH", True)            # la vela de confirmación rompe la estructura M5
+TECH_ALLOW_LIQ_ZONES = _env_flag("TECH_ALLOW_LIQ_ZONES", False)       # permitir liquidez H1 sola (sin OB/FVG)
+TECH_H4_REQUIRED = _env_flag("TECH_H4_REQUIRED", True)                # sin dirección en H4 no hay alertas (rangos/canales incluidos)
+TECH_NEWS_BLOCK_MINUTES = _env_num("TECH_NEWS_BLOCK_MINUTES", 15, int)  # no alertar a ± estos min de una noticia roja
+TECH_ZONE_COOLDOWN_HOURS = _env_num("TECH_ZONE_COOLDOWN_HOURS", 6, float)  # una alerta por zona cada X horas
+TECH_TRACK_HOURS = _env_num("TECH_TRACK_HOURS", 24, int)              # horas de seguimiento de cada alerta
+
+# --- Fase 2: sesiones, relación riesgo/beneficio y calidad A/B/C ---
+
+
+def _tech_hours(name, default):
+    """Lee un rango horario UTC tipo '7-20' desde una variable de entorno."""
+    raw = (os.getenv(name) or default).strip().replace(" ", "")
+
+    try:
+        start, end = raw.split("-")
+        start, end = int(start), int(end)
+        if 0 <= start <= 24 and 0 <= end <= 24 and start < end:
+            return start, end
+    except ValueError:
+        pass
+
+    start, end = default.split("-")
+    return int(start), int(end)
+
+
+TECH_SESSION_FILTER = _env_flag("TECH_SESSION_FILTER", True)          # alertar sólo dentro de la ventana de cada activo
+TECH_SESSION_HOURS = {                                                  # ventanas de alerta (UTC)
+    "fx": _tech_hours("TECH_SESS_FX", "7-20"),           # Londres + Nueva York
+    "metal": _tech_hours("TECH_SESS_METAL", "7-20"),     # Londres + Nueva York
+    "index": _tech_hours("TECH_SESS_INDEX", "13-20"),    # apertura y sesión de Nueva York
+    "crypto": _tech_hours("TECH_SESS_CRYPTO", "0-24")    # 24/7
+}
+TECH_MIN_RR = _env_num("TECH_MIN_RR", 2.0, float)                     # relación riesgo/beneficio mínima (1:X)
+TECH_RR_GOOD = _env_num("TECH_RR_GOOD", 3.0, float)                   # R:R que cuenta como punto de calidad
+TECH_RR_REQUIRE_TARGET = _env_flag("TECH_RR_REQUIRE_TARGET", False)   # exigir un objetivo claro para calcular el R:R
+TECH_MIN_GRADE = (os.getenv("TECH_MIN_GRADE", "B").strip().upper() or "B")[:1]
+if TECH_MIN_GRADE not in ("A", "B", "C"):
+    TECH_MIN_GRADE = "B"                                                # calidad mínima para enviar: A, B o C
+TECH_GRADE_RANK = {"A": 3, "B": 2, "C": 1}
 
 TECH_SYMBOLS = {
     "GBP/USD": {
@@ -4475,6 +4532,10 @@ def tech_state_load():
     data.setdefault("daily", {"day": _tech_today(), "total": 0, "by_symbol": {}})
     data.setdefault("last_alert", {})
     data.setdefault("history", [])
+    data.setdefault("zones_sent", {})  # última alerta por zona (una alerta por zona)
+    data.setdefault("track", [])       # seguimiento de resultados de las alertas
+    data.setdefault("stats", {})       # resultados acumulados por activo
+    data.setdefault("stats_grade", {})  # resultados acumulados por calidad (A/B/C)
     data["disabled"] = {}  # al reiniciar/desplegar se reintentan los activos pausados por error de símbolo
     data.setdefault("notified", {})
     data.setdefault("td_sym", {})   # símbolo de Twelve Data que funciona por activo
@@ -4750,6 +4811,23 @@ def tech_zone_overlap(a, b, tol=0.0):
     return a["low"] <= b["high"] + tol and a["high"] >= b["low"] - tol
 
 
+def _tech_zone_visits(c1, zone, start):
+    """Veces que el precio entró en la zona y volvió a salir (0 = zona fresca)."""
+    demand = zone["side"] == "demand"
+    inside, visits = False, 0
+
+    for candle in c1[start:]:
+        touching = candle["l"] <= zone["high"] if demand else candle["h"] >= zone["low"]
+
+        if touching:
+            inside = True
+        elif inside:
+            visits += 1
+            inside = False
+
+    return visits
+
+
 def tech_h1_zones(c1, max_age=150):
     """Zonas H1: FVG (imbalance), OB y piscinas de liquidez sin barrer."""
 
@@ -4771,6 +4849,7 @@ def tech_h1_zones(c1, max_age=150):
             zone = {"kind": "FVG", "side": "demand", "low": first["h"], "high": third["l"],
                     "i": i, "t": c1[i - 1]["t"]}
             if not any(c1[j]["c"] < zone["low"] for j in range(i + 1, n)):
+                zone["visits"] = _tech_zone_visits(c1, zone, i + 1)
                 zones.append(zone)
 
         gap_down = first["l"] - third["h"]
@@ -4778,6 +4857,7 @@ def tech_h1_zones(c1, max_age=150):
             zone = {"kind": "FVG", "side": "supply", "low": third["h"], "high": first["l"],
                     "i": i, "t": c1[i - 1]["t"]}
             if not any(c1[j]["c"] > zone["high"] for j in range(i + 1, n)):
+                zone["visits"] = _tech_zone_visits(c1, zone, i + 1)
                 zones.append(zone)
 
     # Order blocks: última vela contraria antes de un desplazamiento que rompe estructura.
@@ -4797,6 +4877,7 @@ def tech_h1_zones(c1, max_age=150):
             zone = {"kind": "OB", "side": "demand", "low": base["l"], "high": base["h"],
                     "i": i, "t": base["t"]}
             if not any(c1[j]["c"] < zone["low"] for j in range(i + 2, n)):
+                zone["visits"] = _tech_zone_visits(c1, zone, i + 2)
                 zones.append(zone)
 
         if base["c"] > base["o"] and impulse["c"] < impulse["o"] and impulse["c"] < base["l"] \
@@ -4804,6 +4885,7 @@ def tech_h1_zones(c1, max_age=150):
             zone = {"kind": "OB", "side": "supply", "low": base["l"], "high": base["h"],
                     "i": i, "t": base["t"]}
             if not any(c1[j]["c"] > zone["high"] for j in range(i + 2, n)):
+                zone["visits"] = _tech_zone_visits(c1, zone, i + 2)
                 zones.append(zone)
 
     # Liquidez: máximos/mínimos H1 que todavía no han sido barridos.
@@ -5022,11 +5104,107 @@ def tech_mirror_line(line):
 # M5: barrido de liquidez + cierre a favor + vela de confirmación
 # ------------------------------------------------------------
 
-def tech_detect_sweep_long(c5, zones, a1):
+def tech_entry_reference(zone, pool, a1, extreme):
+    """Marco 'largo' (demanda): zona y nivel de entrada de referencia (reglas ApexQuant).
+
+    • FVG no amplio  → 50% del FVG.
+    • FVG amplio     → order block situado bajo el FVG (si no hay, el 50% del FVG).
+    • Varios FVG     → se toma el más alejado (el más bajo) como referencia.
+    El barrido de M5 debe haber alcanzado esa referencia y el riesgo hasta la
+    invalidación no puede superar TECH_MAX_RISK_ATR × ATR(H1).
+    """
+
+    tol = 0.1 * a1
+    ref_zone = zone
+    multi = 1
+
+    if zone["kind"] == "FVG" and TECH_FVG_FARTHEST:
+        cluster = [zone]
+        grew = True
+
+        while grew:
+            grew = False
+
+            for other in pool:
+                if other["kind"] != "FVG" or any(other is member for member in cluster):
+                    continue
+
+                if other["low"] < zone["low"] - 2.0 * a1:
+                    continue
+
+                if any(tech_zone_overlap(other, member, 0.5 * a1) for member in cluster):
+                    cluster.append(other)
+                    grew = True
+
+        multi = len(cluster)
+        ref_zone = min(cluster, key=lambda z: z["low"])
+
+    entry_zone = ref_zone
+    wide = False
+    no_ob = False
+
+    if ref_zone["kind"] == "FVG":
+        wide = (ref_zone["high"] - ref_zone["low"]) > TECH_FVG_WIDE_ATR * a1
+
+        if wide:
+            blocks = [
+                z for z in pool
+                if z["kind"] == "OB"
+                and z["high"] <= ref_zone["low"] + 0.35 * a1
+                and z["low"] >= ref_zone["low"] - 2.5 * a1
+            ]
+
+            if blocks:
+                entry_zone = max(blocks, key=lambda z: z["high"])
+            else:
+                no_ob = True
+
+    if entry_zone["kind"] == "FVG":
+        kind = "FVG50"
+        entry = (entry_zone["low"] + entry_zone["high"]) / 2
+        reached = extreme <= entry + tol
+        miss = "el barrido no llegó al 50% del FVG de referencia"
+    elif entry_zone["kind"] == "OB":
+        kind = "OB"
+        entry = (entry_zone["low"] + entry_zone["high"]) / 2
+        reached = extreme <= entry_zone["high"] + tol
+        miss = "FVG amplio: el barrido no llegó al order block inferior" if wide else \
+            "el barrido no llegó al order block"
+    else:
+        kind = "LIQ"
+        entry = entry_zone.get("level", (entry_zone["low"] + entry_zone["high"]) / 2)
+        reached = True
+        miss = ""
+
+    inv = extreme if extreme <= entry else entry_zone["low"]
+    risk = max(entry - inv, 0.0)
+    risk_atr = risk / a1
+
+    result = {
+        "ok": True, "reason": "", "kind": kind, "zone": entry_zone, "entry": entry,
+        "inv": inv, "risk": risk, "risk_atr": risk_atr, "a1": a1,
+        "wide": wide, "no_ob": no_ob, "multi": multi
+    }
+
+    if not reached:
+        result["ok"], result["reason"] = False, miss
+    elif risk_atr > TECH_MAX_RISK_ATR:
+        result["ok"] = False
+        result["reason"] = f"riesgo hasta la invalidación demasiado amplio ({risk_atr:.1f}× ATR H1)"
+
+    return result
+
+
+def tech_detect_sweep_long(c5, zones, a1, diag=None):
     """Marco 'largo': barre mínimos, recupera el nivel y confirma al alza.
 
     Devuelve el último patrón válido, que debe completarse en las 2 últimas velas.
+    Si se pasa 'diag', se anotan los motivos por los que un patrón completo se descartó.
     """
+
+    def note(message):
+        if diag is not None and message:
+            diag.append(message)
 
     n = len(c5)
 
@@ -5038,17 +5216,32 @@ def tech_detect_sweep_long(c5, zones, a1):
     if not a5:
         return None
 
-    _, lows = tech_find_swings(c5, 2, 2)
+    highs5, lows = tech_find_swings(c5, 2, 2)
     tol = 0.15 * a1
     vols = [c["v"] for c in c5[-60:] if c["v"] > 0]
     avg_vol = (sum(vols) / len(vols)) if len(vols) >= 20 else 0
+    pool = [
+        z for z in zones
+        if (not TECH_REQUIRE_FRESH) or z["kind"] == "LIQ" or z.get("visits", 0) == 0
+    ]
 
     def evaluate(k, level, reclaim):
         sweep = c5[k]
         extreme = min(c["l"] for c in c5[k:reclaim + 1])
 
-        # Vela de confirmación: alcista, con cuerpo, cierra sobre el máximo de la vela de recuperación.
-        confirm = None
+        # Última estructura menor (swing high M5) previa al barrido: su ruptura es el CHoCH.
+        swing_highs = [p for idx, p in highs5 if k - 30 <= idx < k]
+
+        if swing_highs:
+            choch_level = swing_highs[-1]
+        else:
+            prior = [c["h"] for c in c5[max(0, k - 12):k]]
+            choch_level = max(prior[-6:]) if prior else None
+
+        # Vela de confirmación: alcista, con cuerpo, cierra sobre el máximo de la vela de recuperación
+        # y (si es obligatorio) rompe el último máximo menor de M5.
+        confirm = None   # cumple todo
+        base = None      # primera vela que cumple sin exigir el CHoCH
 
         for idx in range(reclaim + 1, min(reclaim + 4, n)):
             cand = c5[idx]
@@ -5057,34 +5250,71 @@ def tech_detect_sweep_long(c5, zones, a1):
             no_new_low = min(c["l"] for c in c5[reclaim + 1:idx + 1]) > extreme
 
             if cand["c"] > cand["o"] and cand["c"] > c5[reclaim]["h"] and body_ok and no_new_low:
-                confirm = idx
-                break
+                if base is None:
+                    base = idx
 
-        if confirm is None or confirm < n - 2:
+                breaks = choch_level is not None and cand["c"] > choch_level
+
+                if breaks or not TECH_REQUIRE_CHOCH:
+                    confirm = idx
+                    break
+
+        last = confirm if confirm is not None else base
+
+        if last is None or last < n - 2:
             return None
 
-        if any(c["c"] < extreme for c in c5[confirm:]):
+        if any(c["c"] < extreme for c in c5[last:]):
             return None
 
-        # El barrido debe ocurrir dentro (o sobre el borde) de una zona H1.
+        # El barrido debe ocurrir dentro (o sobre el borde) de una zona H1 (OB o FVG).
         sweep_range = {"low": extreme, "high": max(c["h"] for c in c5[k:reclaim + 1])}
         hits = [
             z for z in zones
             if tech_zone_overlap(sweep_range, z, tol) and extreme >= z["low"] - 0.75 * a1
         ]
 
+        if not TECH_ALLOW_LIQ_ZONES:
+            hits = [z for z in hits if z["kind"] in ("OB", "FVG")]
+
         if not hits:
             return None
 
+        if TECH_REQUIRE_FRESH:
+            fresh = [z for z in hits if z.get("visits", 0) == 0]
+
+            if not fresh:
+                note("la zona H1 ya fue visitada antes (no está fresca)")
+                return None
+
+            hits = fresh
+
         hits.sort(key=lambda z: (not z.get("conf"), z["kind"] == "LIQ"))
 
-        # Estructura menor: cierre de confirmación sobre el último máximo M5 previo al barrido.
-        prior_highs = [c["h"] for c in c5[max(0, k - 12):k]]
-        choch = bool(prior_highs) and c5[confirm]["c"] > max(prior_highs[-6:])
+        ref, chosen, why = None, None, ""
+
+        for z in hits:
+            cand_ref = tech_entry_reference(z, pool, a1, extreme)
+
+            if cand_ref["ok"]:
+                ref, chosen = cand_ref, z
+                break
+
+            why = cand_ref["reason"]
+
+        if ref is None:
+            note(why)
+            return None
+
+        if confirm is None:
+            note("sin cambio de estructura (CHoCH) en M5")
+            return None
+
+        choch = choch_level is not None and c5[confirm]["c"] > choch_level
         vol_ok = avg_vol > 0 and max(c5[k]["v"], c5[confirm]["v"]) > 1.3 * avg_vol
 
         return {
-            "type": "smc", "zone": hits[0], "level": level, "extreme": extreme,
+            "type": "smc", "zone": chosen, "ref": ref, "level": level, "extreme": extreme,
             "confirm_idx": confirm, "confirm_time": c5[confirm]["t"],
             "choch": choch, "vol_ok": vol_ok, "vol_known": avg_vol > 0
         }
@@ -5128,27 +5358,35 @@ def tech_detect_sweep_long(c5, zones, a1):
     return found
 
 
-def tech_detect_smc(c5, zones, bias_dir, a1):
+def tech_detect_smc(c5, zones, bias_dir, a1, diag=None):
     """Aplica la detección en el sentido de H4 (espejando para cortos)."""
 
     if bias_dir == "bull":
-        result = tech_detect_sweep_long(c5, [z for z in zones if z["side"] == "demand"], a1)
+        result = tech_detect_sweep_long(c5, [z for z in zones if z["side"] == "demand"], a1, diag)
         if result:
             result["dir"] = "bull"
         return result
 
     if bias_dir == "bear":
-        mirrored_zones = [tech_mirror_zone(z) for z in zones if z["side"] == "supply"]
-        result = tech_detect_sweep_long(tech_mirror_candles(c5), mirrored_zones, a1)
+        supply = [z for z in zones if z["side"] == "supply"]
+        mirrored_zones = [tech_mirror_zone(z) for z in supply]
+        result = tech_detect_sweep_long(tech_mirror_candles(c5), mirrored_zones, a1, diag)
 
         if not result:
             return None
 
-        original = {id(m): z for m, z in zip(mirrored_zones, [z for z in zones if z["side"] == "supply"])}
+        original = {id(m): z for m, z in zip(mirrored_zones, supply)}
         result["dir"] = "bear"
         result["level"] = -result["level"]
         result["extreme"] = -result["extreme"]
         result["zone"] = original.get(id(result["zone"]), result["zone"])
+
+        ref = result.get("ref")
+        if ref:
+            ref["entry"] = -ref["entry"]
+            ref["inv"] = -ref["inv"]
+            ref["zone"] = original.get(id(ref["zone"]), ref["zone"])
+
         return result
 
     return None
@@ -5370,6 +5608,47 @@ def tech_session_bonus(cfg, now):
     return now.weekday() < 5 and 7 <= now.hour < 17
 
 
+def tech_alert_window_open(cfg, now):
+    """Ventana de alertas por tipo de activo (fuera de ella el bot sólo vigila, no alerta)."""
+    if not TECH_SESSION_FILTER:
+        return True
+
+    if cfg["kind"] != "crypto" and now.weekday() >= 5:
+        return False
+
+    start, end = TECH_SESSION_HOURS.get(cfg["kind"], (0, 24))
+    return start <= now.hour < end
+
+
+def tech_prime_session(cfg, now):
+    """Sesión de máxima liquidez del activo (punto de calidad)."""
+    hour = now.hour
+
+    if cfg["kind"] == "crypto":
+        return 12 <= hour < 20
+
+    if cfg["kind"] == "index":
+        return 13 <= hour < 17
+
+    return now.weekday() < 5 and 7 <= hour < 16
+
+
+def tech_session_label(cfg, now):
+    if cfg["kind"] == "crypto":
+        return "24/7"
+
+    hour = now.hour
+
+    if 12 <= hour < 16:
+        return "solape Londres–Nueva York"
+    if 7 <= hour < 12:
+        return "Londres"
+    if 16 <= hour < 21:
+        return "Nueva York"
+
+    return "Asia"
+
+
 def tech_tradingview_url(cfg, interval="5"):
     return "https://www.tradingview.com/chart/?" + urlencode({"symbol": cfg["tv"], "interval": interval})
 
@@ -5387,6 +5666,60 @@ def tech_zone_text(zone, fmt):
         text += " + confluencia de liquidez"
 
     return text
+
+
+def tech_entry_lines(cfg, setup, ref, price, fmt):
+    """Bloque 'Zona de entrada de referencia' (informativo)."""
+
+    bull = setup["dir"] == "bull"
+    zone = ref.get("zone")
+    lines = ["🧭 <b>Zona de entrada de referencia</b> (informativa)"]
+
+    if ref["kind"] == "BREAK":
+        lines.append(f"• Nivel clave de la ruptura/barrido: <b>{fmt(ref['entry'])}</b>")
+    elif ref["kind"] == "FVG50" and zone:
+        lines.append(f"• 50% del {escape(tech_zone_text(zone, fmt))}: <b>{fmt(ref['entry'])}</b>")
+    elif ref["kind"] == "OB" and zone:
+        lines.append(f"• {escape(tech_zone_text(zone, fmt))} (centro: <b>{fmt(ref['entry'])}</b>)")
+    elif zone:
+        lines.append(f"• {escape(tech_zone_text(zone, fmt))}")
+    else:
+        lines.append(f"• Nivel: <b>{fmt(ref['entry'])}</b>")
+
+    if ref.get("wide") and ref["kind"] == "OB":
+        lines.append(
+            "• FVG amplio: se usa el order block " + ("inferior" if bull else "superior")
+            + " para acotar la distancia hasta el stop."
+        )
+    elif ref.get("no_ob"):
+        lines.append("• ⚠️ FVG amplio sin order block cercano: se usa el 50% del FVG.")
+
+    if ref.get("multi", 1) > 1:
+        lines.append(f"• Hay {ref['multi']} FVG encadenados: se toma el más alejado como referencia.")
+
+    risk = ref["risk"]
+
+    if cfg["kind"] == "fx":
+        pip = 10 ** -(cfg["digits"] - 1)
+        dist = f"~{risk / pip:.1f} pips"
+    else:
+        dist = fmt(risk)
+
+    warn = " ⚠️ distancia amplia" if ref["risk_atr"] > 1.0 else ""
+    lines.append(
+        f"• Distancia hasta la invalidación: <b>{dist}</b> ({ref['risk_atr']:.1f}× ATR H1){warn}"
+    )
+
+    a1 = ref.get("a1")
+    gap = (price - ref["entry"]) if bull else (ref["entry"] - price)
+
+    if a1 and gap > 0.5 * a1:
+        lines.append(
+            f"• El precio actual está ~{gap / a1:.1f}× ATR H1 "
+            f"{'por encima' if bull else 'por debajo'} de esa zona: puede requerir retroceso."
+        )
+
+    return lines
 
 
 def build_tech_alert(name, cfg, setup, bias, price, ref_liquidity, news_lines, now):
@@ -5464,7 +5797,7 @@ def build_tech_alert(name, cfg, setup, bias, price, ref_liquidity, news_lines, n
     if setup.get("zone_conf"):
         extras.append("zona con confluencia (OB/FVG + liquidez)")
     if setup.get("session_ok"):
-        extras.append("sesión de alta liquidez")
+        extras.append("sesión de alta liquidez" + (f" ({setup['session_label']})" if setup.get("session_label") else ""))
     if setup.get("quality_ok"):
         extras.append("rango/canal bien definido (≥6 toques)")
 
@@ -5474,17 +5807,38 @@ def build_tech_alert(name, cfg, setup, bias, price, ref_liquidity, news_lines, n
     if extras:
         lines.append("➕ " + " · ".join(extras))
 
+    if setup.get("grade"):
+        lines.append("")
+        lines.append(
+            f"🏅 <b>Calidad del setup:</b> {setup['grade']} "
+            f"({setup['grade_points']}/{setup['grade_max']} criterios)"
+        )
+        if setup.get("grade_labels"):
+            lines.append("➕ " + " · ".join(setup["grade_labels"]))
+
+    if setup.get("ref"):
+        lines.append("")
+        lines.extend(tech_entry_lines(cfg, setup, setup["ref"], price, fmt))
+
+    invalidation = (setup.get("ref") or {}).get("inv", setup["extreme"])
+
     lines.extend([
         "",
         "📍 <b>Niveles de referencia</b> (informativos)",
         f"• Precio actual: <b>{fmt(price)}</b>",
-        f"• Nivel que invalida el escenario: {'bajo' if bull else 'sobre'} <b>{fmt(setup['extreme'])}</b>"
+        f"• Nivel que invalida el escenario: {'bajo' if bull else 'sobre'} <b>{fmt(invalidation)}</b>"
     ])
 
     if ref_liquidity is not None:
         lines.append(
             f"• Liquidez H1 cercana: {fmt(ref_liquidity)} "
             f"({'máximos' if bull else 'mínimos'} sin barrer)"
+        )
+
+    if setup.get("rr") is not None and setup.get("target") is not None:
+        lines.append(
+            f"• Relación beneficio/riesgo hasta el objetivo de referencia "
+            f"({fmt(setup['target'])}): <b>1:{setup['rr']:.1f}</b>"
         )
 
     if news_lines:
@@ -5540,7 +5894,106 @@ def tech_can_send(name, key, now):
     return True, ""
 
 
-def tech_register_sent(name, key, setup, now):
+def tech_reward_risk(setup, bias, ref_liquidity):
+    """Relación beneficio/riesgo desde la entrada de referencia hasta el objetivo.
+
+    Objetivo: la liquidez H1 sin barrer más cercana en el sentido del escenario; si no
+    hay, el extremo del rango H4. Devuelve (R:R, objetivo) o (None, None).
+    """
+    ref = setup.get("ref") or {}
+    entry, inv = ref.get("entry"), ref.get("inv")
+
+    if entry is None or inv is None:
+        return None, None
+
+    bull = setup["dir"] == "bull"
+    risk = (entry - inv) if bull else (inv - entry)
+    a1 = ref.get("a1")
+
+    if a1:
+        risk = max(risk, 0.1 * a1)  # evita R:R inflados por un stop minúsculo
+
+    if risk <= 0:
+        return None, None
+
+    target = None
+
+    if ref_liquidity is not None and ((ref_liquidity > entry) if bull else (ref_liquidity < entry)):
+        target = ref_liquidity
+    else:
+        rng = (bias or {}).get("range")
+
+        if rng:
+            far = rng[1] if bull else rng[0]
+            if (far > entry) if bull else (far < entry):
+                target = far
+
+    if target is None:
+        return None, None
+
+    reward = (target - entry) if bull else (entry - target)
+    return reward / risk, target
+
+
+def tech_grade(cfg, setup, bias, price, now):
+    """Nota A/B/C según los criterios de calidad que cumple el setup."""
+    ref = setup.get("ref") or {}
+    items = []
+
+    if setup["type"] == "smc":
+        items.append(("zona con confluencia real", bool(setup.get("zone_conf"))))
+    else:
+        items.append(("rango/canal bien definido", bool(setup.get("quality_ok"))))
+
+    items.append(("sesión de máxima liquidez", tech_prime_session(cfg, now)))
+
+    if setup.get("vol_known"):
+        items.append(("volumen sobre la media", bool(setup.get("vol_ok"))))
+
+    if setup.get("rr") is not None:
+        items.append((f"R:R ≥ 1:{TECH_RR_GOOD:g}", setup["rr"] >= TECH_RR_GOOD))
+
+    if ref.get("risk_atr") is not None:
+        items.append(("riesgo ajustado (≤ 0,75× ATR H1)", ref["risk_atr"] <= 0.75))
+
+    if ref.get("a1") and ref.get("entry") is not None:
+        gap = (price - ref["entry"]) if setup["dir"] == "bull" else (ref["entry"] - price)
+        items.append(("precio ya en la zona de entrada", gap <= 0.5 * ref["a1"]))
+
+    met = [label for label, ok in items if ok]
+    ratio = (len(met) / len(items)) if items else 0.0
+    grade = "A" if ratio >= 0.67 else "B" if ratio >= 0.4 else "C"
+
+    setup["grade"] = grade
+    setup["grade_points"], setup["grade_max"] = len(met), len(items)
+    setup["grade_labels"] = met
+    return grade
+
+
+def tech_zone_key(name, cfg, setup):
+    """Identifica la zona de la alerta (para no repetir alertas sobre la misma zona)."""
+    digits = cfg["digits"]
+    zone = (setup.get("ref") or {}).get("zone") or setup.get("zone")
+
+    if setup["type"] == "smc" and zone:
+        return f"{name}|{setup['dir']}|{zone['kind']}|{zone['low']:.{digits}f}|{zone['high']:.{digits}f}"
+
+    return f"{name}|{setup['dir']}|{setup['type']}|{setup.get('boundary', '')}|{setup.get('channel_kind', '')}"
+
+
+def tech_zone_recent(zone_key, now):
+    last = TECH_STATE.get("zones_sent", {}).get(zone_key)
+
+    if not last:
+        return False
+
+    try:
+        return (now - datetime.fromisoformat(last)).total_seconds() < TECH_ZONE_COOLDOWN_HOURS * 3600
+    except ValueError:
+        return False
+
+
+def tech_register_sent(name, key, setup, now, zone_key=None):
     TECH_STATE["sent"][key] = now.isoformat()
     TECH_STATE["last_alert"][name] = now.isoformat()
     daily = TECH_STATE["daily"]
@@ -5549,6 +6002,90 @@ def tech_register_sent(name, key, setup, now):
     TECH_STATE["history"].append({
         "t": now.isoformat(), "symbol": name, "type": setup["type"], "dir": setup["dir"]
     })
+
+    if zone_key:
+        zones_sent = TECH_STATE.setdefault("zones_sent", {})
+        zones_sent[zone_key] = now.isoformat()
+
+        for old_key in list(zones_sent)[:-200]:
+            zones_sent.pop(old_key, None)
+
+
+def tech_track_open(name, setup, price, now):
+    """Abre el seguimiento de una alerta: ¿llega a +1R antes de perder la invalidación?"""
+    inv = (setup.get("ref") or {}).get("inv", setup.get("extreme"))
+
+    if inv is None:
+        return
+
+    bull = setup["dir"] == "bull"
+    risk = (price - inv) if bull else (inv - price)
+
+    if risk <= 0:
+        return
+
+    items = TECH_STATE.setdefault("track", [])
+    items.append({
+        "symbol": name, "type": setup["type"], "dir": setup["dir"],
+        "t": now.isoformat(), "after": setup["confirm_time"].isoformat(),
+        "entry": price, "inv": inv, "risk": risk, "max_r": 0.0, "status": "open",
+        "grade": setup.get("grade", "")
+    })
+    del items[:-80]
+
+
+def tech_track_update(name, c5, now):
+    """Resuelve las alertas abiertas del activo con las velas M5 ya descargadas (sin créditos extra)."""
+    stats = TECH_STATE.setdefault("stats", {})
+
+    for item in TECH_STATE.get("track", []):
+        if item.get("status") != "open" or item.get("symbol") != name:
+            continue
+
+        try:
+            after = datetime.fromisoformat(item["after"])
+            opened = datetime.fromisoformat(item["t"])
+        except (KeyError, ValueError):
+            item["status"] = "expired"
+            continue
+
+        bull = item["dir"] == "bull"
+        entry, inv, risk = item["entry"], item["inv"], item["risk"]
+        target = entry + risk if bull else entry - risk
+        result = None
+
+        for candle in c5:
+            if candle["t"] <= after:
+                continue
+
+            hit_inv = candle["l"] <= inv if bull else candle["h"] >= inv
+            hit_tp = candle["h"] >= target if bull else candle["l"] <= target
+            favorable = ((candle["h"] - entry) if bull else (entry - candle["l"])) / risk
+            item["max_r"] = round(max(item.get("max_r", 0.0), favorable), 2)
+
+            if hit_inv and hit_tp:
+                result = "ambigua"
+                break
+            if hit_inv:
+                result = "loss"
+                break
+            if hit_tp:
+                result = "win"
+                break
+
+        if result is None and (now - opened).total_seconds() > TECH_TRACK_HOURS * 3600:
+            result = "expired"
+
+        if result:
+            item["status"] = result
+            bucket = stats.setdefault(name, {"win": 0, "loss": 0, "ambigua": 0, "expired": 0})
+            bucket[result] = bucket.get(result, 0) + 1
+
+            if result in ("win", "loss") and item.get("grade"):
+                by_grade = TECH_STATE.setdefault("stats_grade", {}).setdefault(
+                    item["grade"], {"win": 0, "loss": 0}
+                )
+                by_grade[result] = by_grade.get(result, 0) + 1
 
 
 async def tech_notify_admin_once(application, key, text):
@@ -5682,7 +6219,7 @@ def tech_score_smc(cfg, setup, bias, price, now):
     maximum = 4 + (1 if setup["vol_known"] else 0)
     zone = setup["zone"]
 
-    setup["zone_conf"] = bool(zone.get("conf") or zone["kind"] in ("OB", "FVG"))
+    setup["zone_conf"] = bool(zone.get("conf"))  # solape real entre OB/FVG y liquidez
     setup["session_ok"] = tech_session_bonus(cfg, now)
     setup["pd_ok"] = False
 
@@ -5744,6 +6281,13 @@ async def tech_scan_symbol(application, name, force=False):
         rt["status"] = "🌙 fuera del horario de análisis"
         return
 
+    if not force and not tech_alert_window_open(cfg, now):
+        rt["status"] = (
+            f"🕐 fuera de la ventana de alertas ({tech_session_label(cfg, now)}) · "
+            "sin análisis M5 para ahorrar créditos"
+        )
+        return
+
     try:
         if force or time.time() - rt.get("h4_ts", 0) > TECH_H4_TTL_SECONDS:
             c4 = await tech_refresh(name, cfg, "h4")
@@ -5776,8 +6320,8 @@ async def tech_scan_symbol(application, name, force=False):
     zones = rt.get("zones") or []
     h1_candles = rt.get("h1") or []
 
-    if bias["dir"] == "neutral" and not channel:
-        rt["status"] = f"⚪ H4 neutral ({bias.get('reason', 'sin sesgo')}) y sin rango/canal H1 · en espera"
+    if bias["dir"] == "neutral" and (TECH_H4_REQUIRED or not channel):
+        rt["status"] = f"⚪ H4 neutral ({bias.get('reason', 'sin sesgo')}) · sin dirección en H4 no hay alertas · en espera"
         return
 
     last_price = rt["m5"][-1]["c"] if rt.get("m5") else (h1_candles[-1]["c"] if h1_candles else None)
@@ -5796,18 +6340,42 @@ async def tech_scan_symbol(application, name, force=False):
     price = c5[-1]["c"]
     near = tech_price_is_near(rt, price)
     candidates = []
+    notes = []
+
+    tech_track_update(name, c5, now)
 
     if bias["dir"] in ("bull", "bear") and zones:
-        setup = tech_detect_smc(c5, zones, bias["dir"], rt.get("a1"))
+        setup = tech_detect_smc(c5, zones, bias["dir"], rt.get("a1"), diag=notes)
         if setup:
             tech_score_smc(cfg, setup, bias, price, now)
-            candidates.append(setup)
+
+            if TECH_REQUIRE_PD and not setup.get("pd_ok"):
+                notes.append(
+                    "el precio no está en " + ("descuento" if setup["dir"] == "bull" else "premium")
+                    + " del rango H4"
+                )
+            else:
+                candidates.append(setup)
 
     if channel:
         setup = tech_detect_break(c5, channel, bias["dir"])
         if setup:
             tech_score_break(cfg, setup, bias, channel, c5, now)
-            candidates.append(setup)
+            a1_now = rt.get("a1")
+
+            if a1_now:
+                risk = abs(setup["level"] - setup["extreme"])
+                setup["ref"] = {
+                    "kind": "BREAK", "zone": None, "entry": setup["level"], "inv": setup["extreme"],
+                    "risk": risk, "risk_atr": risk / a1_now, "a1": a1_now
+                }
+
+                if risk / a1_now > TECH_MAX_RISK_ATR:
+                    notes.append(f"riesgo hasta la invalidación demasiado amplio ({risk / a1_now:.1f}× ATR H1)")
+                else:
+                    candidates.append(setup)
+            else:
+                candidates.append(setup)
 
     state_icon = {"bull": "🟢", "bear": "🔴"}.get(bias["dir"], "⚪")
     extra = f" · {channel['kind'].lower()} H1" if channel else ""
@@ -5817,6 +6385,8 @@ async def tech_scan_symbol(application, name, force=False):
     )
 
     if not candidates:
+        if notes:
+            rt["status"] += " · patrón descartado: " + "; ".join(list(dict.fromkeys(notes))[:2])
         return
 
     candidates.sort(key=lambda s: (s["score"], s["confirm_idx"]), reverse=True)
@@ -5826,6 +6396,31 @@ async def tech_scan_symbol(application, name, force=False):
         rt["status"] += f" · patrón detectado sin confluencias suficientes ({setup['score']}/{setup['score_max']})"
         return
 
+    if not tech_alert_window_open(cfg, now):
+        rt["status"] += f" · patrón fuera de la ventana de alertas ({tech_session_label(cfg, now)})"
+        return
+
+    liq_ref = tech_next_liquidity(h1_candles, price, "up" if setup["dir"] == "bull" else "down")
+    setup["rr"], setup["target"] = tech_reward_risk(setup, bias, liq_ref)
+    setup["session_label"] = tech_session_label(cfg, now)
+
+    if setup["rr"] is None and TECH_RR_REQUIRE_TARGET:
+        rt["status"] += " · patrón descartado: sin objetivo claro para calcular la relación riesgo/beneficio"
+        return
+
+    if setup["rr"] is not None and setup["rr"] < TECH_MIN_RR:
+        rt["status"] += (
+            f" · patrón descartado: relación beneficio/riesgo 1:{setup['rr']:.1f} "
+            f"(mínimo 1:{TECH_MIN_RR:g})"
+        )
+        return
+
+    tech_grade(cfg, setup, bias, price, now)
+
+    if TECH_GRADE_RANK.get(setup["grade"], 0) < TECH_GRADE_RANK[TECH_MIN_GRADE]:
+        rt["status"] += f" · patrón descartado: calidad {setup['grade']} (mínimo {TECH_MIN_GRADE})"
+        return
+
     key = f"{name}|{setup['type']}|{setup['dir']}|{setup['confirm_time'].isoformat()}"
     allowed, reason = tech_can_send(name, key, now)
 
@@ -5833,9 +6428,20 @@ async def tech_scan_symbol(application, name, force=False):
         rt["status"] += f" · alerta no enviada: {reason}"
         return
 
+    zone_key = tech_zone_key(name, cfg, setup)
+
+    if tech_zone_recent(zone_key, now):
+        rt["status"] += " · alerta no enviada: esta zona ya se alertó hace poco"
+        return
+
     news = await tech_news_for(cfg, now)
+
+    if any(item[2] == "high" and abs(item[1]) <= TECH_NEWS_BLOCK_MINUTES for item in news):
+        rt["status"] += f" · alerta retenida: noticia de alto impacto a ±{TECH_NEWS_BLOCK_MINUTES} min"
+        return
+
     news_lines, _ = tech_news_lines(news)
-    ref = tech_next_liquidity(h1_candles, price, "up" if setup["dir"] == "bull" else "down")
+    ref = liq_ref
     text = build_tech_alert(name, cfg, setup, bias, price, ref, news_lines, now)
 
     try:
@@ -5845,7 +6451,8 @@ async def tech_scan_symbol(application, name, force=False):
         rt["status"] += f" · error al publicar: {str(error)[:60]}"
         return
 
-    tech_register_sent(name, key, setup, now)
+    tech_register_sent(name, key, setup, now, zone_key)
+    tech_track_open(name, setup, price, now)
     tech_state_save()
     rt["status"] = f"✅ alerta enviada ({setup['type']}, {setup['dir']})"
     logger.info("🔔 Alerta técnica enviada: %s %s %s", name, setup["type"], setup["dir"])
@@ -5931,6 +6538,34 @@ async def show_admin_tech(query):
         f"🕒 Horario de análisis (UTC, lun–vie): {TECH_ACTIVE_START_UTC:02d}:00–{TECH_ACTIVE_END_UTC:02d}:00 · BTC 24/7",
         ""
     ]
+
+    lines.insert(
+        len(lines) - 1,
+        f"🧪 Filtros: R:R mínimo 1:{TECH_MIN_RR:g} · calidad mínima {TECH_MIN_GRADE} · "
+        f"sesiones {'activas' if TECH_SESSION_FILTER else 'desactivadas'}"
+    )
+
+    stats = TECH_STATE.get("stats") or {}
+
+    if stats:
+        total = {
+            key: sum(item.get(key, 0) for item in stats.values())
+            for key in ("win", "loss", "ambigua", "expired")
+        }
+        lines.insert(
+            len(lines) - 1,
+            f"📈 Seguimiento (+1R antes que la invalidación): ✅ {total['win']} · ❌ {total['loss']} · "
+            f"➖ {total['ambigua'] + total['expired']} sin resolver"
+        )
+
+    by_grade = TECH_STATE.get("stats_grade") or {}
+
+    if by_grade:
+        parts = [
+            f"{grade}: ✅{value.get('win', 0)}/❌{value.get('loss', 0)}"
+            for grade, value in sorted(by_grade.items())
+        ]
+        lines.insert(len(lines) - 1, "🏅 Por calidad → " + " · ".join(parts))
 
     for name, cfg in TECH_SYMBOLS.items():
         rt = TECH_RUNTIME.get(name, {})
