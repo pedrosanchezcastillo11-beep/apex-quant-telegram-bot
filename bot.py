@@ -1243,12 +1243,15 @@ async def fetch_calendar_events(start_date, end_date=None, impact=None):
     try:
         # Se pide un día de margen a cada lado porque la API filtra por la fecha
         # local de quien publica y aquí se necesita la fecha en la zona del bot.
-        rows = await loop.run_in_executor(
-            None,
-            _fc_load_with_retry,
-            start_date - timedelta(days=1),
-            end_date + timedelta(days=1),
-            impact
+        rows = await asyncio.wait_for(
+            loop.run_in_executor(
+                None,
+                _fc_load_with_retry,
+                start_date - timedelta(days=1),
+                end_date + timedelta(days=1),
+                impact
+            ),
+            timeout=90
         )
     except HTTPError as error:
         logger.error("Error obteniendo calendario: HTTP %s", error.code)
@@ -4243,6 +4246,7 @@ def _medium_sent_today(seen):
 
 async def community_high_impact_monitor(application):
     while True:
+        _beat("eventos")
         try:
             channel_id = get_community_channel_id()
 
@@ -4259,6 +4263,11 @@ async def community_high_impact_monitor(application):
                         today + timedelta(days=1),
                         impact=level
                     )
+                    if batch is None:
+                        MONITOR_STATUS.setdefault("eventos", {})["calendar_error"] = time.time()
+                    else:
+                        MONITOR_STATUS.setdefault("eventos", {})["calendar_ok"] = time.time()
+
                     events.extend(batch or [])
 
                 seen = _load_json_file(COMMUNITY_EVENTS_FILE, {})
@@ -4319,8 +4328,10 @@ async def community_high_impact_monitor(application):
                             )
                             seen[base_key] = stamp
                             changed = True
+                            _mark_publish_ok("eventos")
                         except Exception as error:
                             logger.error("No se pudo publicar el aviso de %s: %s", name, error)
+                            await _publish_failed(application, "eventos", error)
 
                     # 2) Resultado publicado frente al consenso.
                     # En impacto medio sólo se publica si antes se avisó del evento.
@@ -4341,17 +4352,28 @@ async def community_high_impact_monitor(application):
                             )
                             seen[result_key] = datetime.utcnow().isoformat() + "Z"
                             changed = True
+                            _mark_publish_ok("eventos")
                         except Exception as error:
                             logger.error("No se pudo publicar el resultado de %s: %s", name, error)
+                            await _publish_failed(application, "eventos", error)
 
                 if changed:
                     for old_key in list(seen)[:-500]:
                         seen.pop(old_key, None)
                     _save_json_file(COMMUNITY_EVENTS_FILE, seen)
+
+            if not channel_id:
+                await _monitor_alert(
+                    application, "canal_vacio",
+                    "⚠️ <b>Canal no detectado:</b> el bot no tiene guardado el ID del Canal, "
+                    "por eso no publica eventos ni alertas. Publica cualquier mensaje en el Canal "
+                    "(con el bot como administrador) o define COMMUNITY_CHANNEL_ID en Deployka."
+                )
         except asyncio.CancelledError:
             raise
         except Exception as error:
             logger.error("Error en monitor de eventos (alto/medio impacto): %s", error, exc_info=True)
+            MONITOR_STATUS.setdefault("eventos", {})["last_error"] = f"{type(error).__name__}: {str(error)[:120]}"
 
         await asyncio.sleep(HIGH_IMPACT_CHECK_SECONDS)
 
@@ -4664,7 +4686,10 @@ async def td_get_candles(symbol, interval, outputsize):
     loop = asyncio.get_running_loop()
 
     try:
-        data = await loop.run_in_executor(None, _td_fetch_blocking, symbol, interval, outputsize)
+        data = await asyncio.wait_for(
+            loop.run_in_executor(None, _td_fetch_blocking, symbol, interval, outputsize),
+            timeout=60
+        )
     except Exception as error:
         raise TechDataError(f"sin conexión con Twelve Data ({error})")
 
@@ -6449,8 +6474,10 @@ async def tech_scan_symbol(application, name, force=False):
     except Exception as error:
         logger.error("No se pudo publicar la alerta técnica de %s: %s", name, error)
         rt["status"] += f" · error al publicar: {str(error)[:60]}"
+        await _publish_failed(application, "tecnicas", error)
         return
 
+    _mark_publish_ok("tecnicas")
     tech_register_sent(name, key, setup, now, zone_key)
     tech_track_open(name, setup, price, now)
     tech_state_save()
@@ -6460,6 +6487,7 @@ async def tech_scan_symbol(application, name, force=False):
 
 async def tech_scan_all(application, force=False):
     for name in TECH_SYMBOLS:
+        _beat("tecnicas")
         try:
             await tech_scan_symbol(application, name, force=force)
         except asyncio.CancelledError:
@@ -6491,6 +6519,7 @@ async def tech_alerts_monitor(application):
     await asyncio.sleep(15)
 
     while True:
+        _beat("tecnicas")
         try:
             if TWELVEDATA_API_KEY and TECH_STATE.get("enabled", True):
                 await tech_scan_all(application)
@@ -7703,6 +7732,225 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ============================================================
+# SUPERVISIÓN DE LOS MONITORES (eventos y alertas técnicas)
+# ============================================================
+# - Cada monitor marca un "latido". Si se cae o se cuelga, se relanza solo y se avisa al admin.
+# - Si TODO el bucle del bot se congela, un vigilante en un hilo aparte reinicia el proceso.
+# - Si falla la publicación en el Canal, el admin recibe el error exacto (máx. 1 aviso cada 2 h).
+# - /estado y /probar_canal (sólo admin) muestran el diagnóstico completo.
+
+MONITOR_STATUS = {}
+MONITOR_STALE_SECONDS = {"eventos": 900, "tecnicas": 900}
+LOOP_BEAT = {"ts": time.time()}
+WATCHDOG_SECONDS = _env_num("WATCHDOG_SECONDS", 600, int)  # 0 = desactivado
+
+
+def _beat(name):
+    MONITOR_STATUS.setdefault(name, {"restarts": 0})["beat"] = time.time()
+
+
+def _mark_publish_ok(name):
+    status = MONITOR_STATUS.setdefault(name, {"restarts": 0})
+    status["publish_ok"] = time.time()
+    status.pop("publish_error", None)
+
+
+def _ago(ts):
+    if not ts:
+        return "nunca desde el último reinicio"
+
+    seconds = max(0, int(time.time() - ts))
+
+    if seconds < 90:
+        return f"hace {seconds} s"
+    if seconds < 5400:
+        return f"hace {seconds // 60} min"
+
+    return f"hace {seconds // 3600} h {(seconds % 3600) // 60} min"
+
+
+async def _monitor_alert(application, key, text, hours=2):
+    """Aviso al administrador, con un enfriamiento para no repetirlo."""
+    if not ADMIN_TELEGRAM_ID:
+        return
+
+    alerts = MONITOR_STATUS.setdefault("_alerts", {})
+
+    if time.time() - alerts.get(key, 0) < hours * 3600:
+        return
+
+    alerts[key] = time.time()
+
+    try:
+        await application.bot.send_message(
+            chat_id=ADMIN_TELEGRAM_ID, text=text, parse_mode="HTML"
+        )
+    except Exception as error:
+        logger.warning("No se pudo avisar al administrador (%s): %s", key, error)
+
+
+async def _publish_failed(application, name, error):
+    text_error = f"{type(error).__name__}: {str(error)[:160]}"
+    MONITOR_STATUS.setdefault(name, {"restarts": 0})["publish_error"] = (time.time(), text_error)
+
+    await _monitor_alert(
+        application, f"publish|{name}",
+        "⚠️ <b>No se pudo publicar en el Canal</b> "
+        f"({'eventos económicos' if name == 'eventos' else 'alertas técnicas'}).\n"
+        f"<code>{escape(text_error)}</code>\n\n"
+        "Revisa que el bot siga como <b>administrador</b> del Canal con permiso para publicar "
+        "y usa /probar_canal para comprobarlo."
+    )
+
+
+async def monitor_supervisor(application, name, runner):
+    status = MONITOR_STATUS.setdefault(name, {"restarts": 0})
+    stale_after = MONITOR_STALE_SECONDS.get(name, 900)
+
+    while True:
+        status["beat"] = time.time()
+        status["started"] = time.time()
+        task = asyncio.ensure_future(runner(application))
+        reason = "terminó inesperadamente"
+
+        try:
+            while not task.done():
+                await asyncio.sleep(20)
+
+                if not task.done() and time.time() - status["beat"] > stale_after:
+                    reason = f"sin actividad desde hace {int(time.time() - status['beat'])} s (colgado)"
+                    task.cancel()
+                    break
+
+            await asyncio.wait({task}, timeout=15)
+
+            if task.done() and not task.cancelled() and task.exception():
+                reason = f"falló: {type(task.exception()).__name__}: {str(task.exception())[:120]}"
+        except asyncio.CancelledError:
+            task.cancel()
+            raise
+
+        status["restarts"] = int(status.get("restarts", 0)) + 1
+        status["last_restart"] = (time.time(), reason)
+        logger.error("Monitor '%s' reiniciado: %s", name, reason)
+
+        await _monitor_alert(
+            application, f"restart|{name}",
+            f"♻️ <b>Monitor reiniciado:</b> {escape(name)}\n<i>{escape(reason)}</i>",
+            hours=1
+        )
+        await asyncio.sleep(10)
+
+
+async def loop_heartbeat():
+    while True:
+        LOOP_BEAT["ts"] = time.time()
+        await asyncio.sleep(15)
+
+
+def start_loop_watchdog():
+    """Si el bucle principal se congela por completo, reinicia el proceso (Deployka lo relanza)."""
+    if WATCHDOG_SECONDS <= 0:
+        return
+
+    import threading
+
+    def watch():
+        while True:
+            time.sleep(30)
+            frozen = time.time() - LOOP_BEAT["ts"]
+
+            if frozen > WATCHDOG_SECONDS:
+                logger.critical(
+                    "Bucle del bot congelado hace %d s: se reinicia el proceso.", int(frozen)
+                )
+                logging.shutdown()
+                os._exit(1)
+
+    threading.Thread(target=watch, name="apexquant_watchdog", daemon=True).start()
+
+
+async def admin_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+
+    if not user or not is_admin(user.id) or not update.message:
+        return
+
+    channel_id = get_community_channel_id()
+    lines = ["<b>🩺 Estado del bot</b>", ""]
+    lines.append(f"Canal: <code>{escape(channel_id or 'NO DETECTADO')}</code>")
+
+    if channel_id:
+        try:
+            me = await context.bot.get_me()
+            member = await context.bot.get_chat_member(channel_id, me.id)
+            can_post = getattr(member, "can_post_messages", None)
+            lines.append(
+                f"Bot en el Canal: <b>{escape(str(member.status))}</b>"
+                + (f" · puede publicar: <b>{'sí' if can_post else 'NO'}</b>" if can_post is not None else "")
+            )
+        except Exception as error:
+            lines.append(f"⚠️ No se pudo comprobar el Canal: <code>{escape(str(error)[:160])}</code>")
+
+    lines.append("")
+
+    for name, label in (("eventos", "Eventos económicos"), ("tecnicas", "Alertas técnicas")):
+        status = MONITOR_STATUS.get(name, {})
+        lines.append(f"<b>{label}</b>")
+        lines.append(f"• último ciclo: {_ago(status.get('beat'))}")
+        lines.append(f"• última publicación: {_ago(status.get('publish_ok'))}")
+
+        if status.get("publish_error"):
+            ts, text_error = status["publish_error"]
+            lines.append(f"• último error al publicar ({_ago(ts)}): <code>{escape(text_error)}</code>")
+
+        if status.get("last_error"):
+            lines.append(f"• último error interno: <code>{escape(str(status['last_error']))}</code>")
+
+        if name == "eventos":
+            lines.append(f"• calendario OK: {_ago(status.get('calendar_ok'))}")
+            if status.get("calendar_error"):
+                lines.append(f"• último fallo del calendario: {_ago(status.get('calendar_error'))}")
+
+        if status.get("restarts"):
+            ts, reason = status.get("last_restart", (None, ""))
+            lines.append(f"• reinicios: {status['restarts']} (último {_ago(ts)}: {escape(reason)})")
+
+        lines.append("")
+
+    lines.append(
+        f"Twelve Data: {tech_budget_used()}/{TD_DAILY_BUDGET} créditos hoy · "
+        f"alertas técnicas {'activadas' if TECH_STATE.get('enabled', True) else 'DESACTIVADAS'}"
+    )
+
+    await update.message.reply_text("\n".join(lines), parse_mode="HTML")
+
+
+async def admin_test_channel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user = update.effective_user
+
+    if not user or not is_admin(user.id) or not update.message:
+        return
+
+    channel_id = get_community_channel_id()
+
+    if not channel_id:
+        await update.message.reply_text(
+            "⚠️ El bot no tiene guardado el ID del Canal. Publica un mensaje en el Canal "
+            "(con el bot como administrador) o define COMMUNITY_CHANNEL_ID en Deployka."
+        )
+        return
+
+    try:
+        await context.bot.send_message(chat_id=channel_id, text="✅ Prueba de conexión del bot con el Canal.")
+        await update.message.reply_text("✅ El bot puede publicar en el Canal.")
+    except Exception as error:
+        await update.message.reply_text(
+            f"❌ No se pudo publicar en el Canal ({channel_id}):\n{type(error).__name__}: {str(error)[:300]}"
+        )
+
+
+# ============================================================
 # MANEJADOR DE ERRORES
 # ============================================================
 
@@ -7722,10 +7970,19 @@ async def error_handler(
 # ============================================================
 
 async def post_init(application):
-    application.create_task(community_high_impact_monitor(application), name="apexquant_high_impact_monitor")
-    logger.info("🚨 Monitor de eventos de alto y medio impacto iniciado.")
-    application.create_task(tech_alerts_monitor(application), name="apexquant_tech_alerts")
-    logger.info("🧭 Monitor de alertas técnicas iniciado (requiere TWELVEDATA_API_KEY).")
+    LOOP_BEAT["ts"] = time.time()
+    application.create_task(loop_heartbeat(), name="apexquant_loop_heartbeat")
+    start_loop_watchdog()
+    application.create_task(
+        monitor_supervisor(application, "eventos", community_high_impact_monitor),
+        name="apexquant_high_impact_monitor"
+    )
+    logger.info("🚨 Monitor de eventos de alto y medio impacto iniciado (supervisado).")
+    application.create_task(
+        monitor_supervisor(application, "tecnicas", tech_alerts_monitor),
+        name="apexquant_tech_alerts"
+    )
+    logger.info("🧭 Monitor de alertas técnicas iniciado (supervisado; requiere TWELVEDATA_API_KEY).")
 
 
 def main():
@@ -7735,6 +7992,8 @@ def main():
     application = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
     application.add_handler(CommandHandler("start", start), group=0)
     application.add_handler(CommandHandler("cancelar", admin_cancel), group=0)
+    application.add_handler(CommandHandler("estado", admin_status), group=0)
+    application.add_handler(CommandHandler("probar_canal", admin_test_channel), group=0)
     application.add_handler(CallbackQueryHandler(button_handler), group=0)
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, admin_text_input), group=0)
     # El manejador de administración acepta cualquier texto en group=0.
