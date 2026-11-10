@@ -969,10 +969,6 @@ async def calendar_menu(query):
             InlineKeyboardButton(
                 "🟠 Medio",
                 callback_data="calendar_medium"
-            ),
-            InlineKeyboardButton(
-                "🟢 Bajo",
-                callback_data="calendar_low"
             )
         ],
         [
@@ -1413,6 +1409,151 @@ def _fc_cache_ttl(events):
     return CALENDAR_CACHE_IDLE_SECONDS
 
 
+# ============================================================
+# SHOWMYTRADES — FUENTE GRATUITA DE RESPALDO
+# Se consulta sólo cuando FinanceCalendar falla o está bloqueado.
+# La API pública recomienda una descarga cada 15 minutos y admite 30 días.
+# ============================================================
+
+SHOWMYTRADES_CALENDAR_URL = "https://showmytrades.com/api/public/calendar/v1"
+SHOWMYTRADES_CACHE_FILE = os.getenv(
+    "SHOWMYTRADES_CACHE_FILE", "/data/showmytrades_calendar_cache.json"
+).strip()
+SHOWMYTRADES_CACHE_SECONDS = 900  # 15 minutos
+SHOWMYTRADES_CACHE = {"fetched_at": 0.0, "events": []}
+SHOWMYTRADES_CACHE_LOADED = False
+SHOWMYTRADES_LAST_ERROR = ""
+
+
+def _smt_load_disk_cache():
+    global SHOWMYTRADES_CACHE_LOADED, SHOWMYTRADES_CACHE
+    if SHOWMYTRADES_CACHE_LOADED:
+        return
+    SHOWMYTRADES_CACHE_LOADED = True
+    try:
+        saved = _load_json_file(SHOWMYTRADES_CACHE_FILE, {})
+        if isinstance(saved, dict) and isinstance(saved.get("events"), list):
+            SHOWMYTRADES_CACHE = {
+                "fetched_at": float(saved.get("fetched_at") or 0),
+                "events": saved.get("events", [])
+            }
+    except Exception as error:
+        logger.warning("No se pudo leer la caché de ShowMyTrades: %s", error)
+
+
+def _smt_normalize_event(raw):
+    """Adapta ShowMyTrades al formato interno usado por ApexQuant."""
+    if not isinstance(raw, dict):
+        return None
+    impact = str(raw.get("impact") or "").strip().lower()
+    if impact not in ("high", "medium"):
+        return None
+    currency = str(raw.get("currency") or "").strip().upper()
+    if currency not in {
+        "USD", "EUR", "GBP", "JPY", "AUD", "NZD", "CAD", "CHF", "CNY"
+    }:
+        return None
+    moment = _parse_iso_datetime(raw.get("time"))
+    if moment is None and raw.get("ts"):
+        try:
+            moment = datetime.fromtimestamp(float(raw["ts"]), timezone.utc)
+        except (TypeError, ValueError, OverflowError):
+            moment = None
+    if moment is None:
+        return None
+    moment = moment.astimezone(timezone.utc)
+    title = str(raw.get("title") or "Evento económico").strip()
+    event_id = str(raw.get("id") or "").strip()
+    return {
+        "id": event_id or f"smt|{currency}|{moment.isoformat()}|{title}",
+        "name": title,
+        "title": title,
+        "currency": currency,
+        "impact": impact,
+        "time_utc": moment.isoformat().replace("+00:00", "Z"),
+        "release_at_utc": moment.isoformat().replace("+00:00", "Z"),
+        "date": moment.date().isoformat(),
+        "consensus": str(raw.get("forecast") or ""),
+        "forecast": str(raw.get("forecast") or ""),
+        "prior": str(raw.get("previous") or ""),
+        "previous": str(raw.get("previous") or ""),
+        "actual": str(raw.get("actual") or ""),
+        "status": str(raw.get("status") or "scheduled"),
+        "moved_from": str(raw.get("moved_from") or ""),
+        "source": "showmytrades"
+    }
+
+
+def _smt_download_events():
+    """Una sola descarga con todas las divisas disponibles e impactos alto/medio."""
+    params = urlencode({"impact": "high,medium", "days": 30})
+    request = Request(
+        SHOWMYTRADES_CALENDAR_URL + "?" + params,
+        headers={
+            "User-Agent": "ApexQuantBot/1.0 (economic calendar fallback)",
+            "Accept": "application/json"
+        }
+    )
+    with urlopen(request, timeout=20) as response:
+        payload = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict) or not isinstance(payload.get("events"), list):
+        raise RuntimeError("ShowMyTrades devolvió una respuesta JSON inesperada")
+    normalized = []
+    seen = set()
+    for raw in payload["events"]:
+        event = _smt_normalize_event(raw)
+        if not event:
+            continue
+        key = event["id"]
+        if key in seen:
+            continue
+        seen.add(key)
+        normalized.append(event)
+    normalized.sort(key=event_sort_key)
+    return normalized
+
+
+async def _showmytrades_fallback(start_date, end_date, impact=None):
+    """Obtiene eventos de respaldo; conserva la última caché si la API falla."""
+    global SHOWMYTRADES_LAST_ERROR, SHOWMYTRADES_CACHE
+    _smt_load_disk_cache()
+    now = time.time()
+    cached_at = SHOWMYTRADES_CACHE.get("fetched_at", 0.0)
+    events = SHOWMYTRADES_CACHE.get("events", [])
+    if not events or now - cached_at >= SHOWMYTRADES_CACHE_SECONDS:
+        loop = asyncio.get_running_loop()
+        try:
+            fresh = await asyncio.wait_for(
+                loop.run_in_executor(None, _smt_download_events), timeout=30
+            )
+            SHOWMYTRADES_CACHE = {"fetched_at": time.time(), "events": fresh}
+            SHOWMYTRADES_LAST_ERROR = ""
+            try:
+                _save_json_file(SHOWMYTRADES_CACHE_FILE, SHOWMYTRADES_CACHE)
+            except Exception as error:
+                logger.warning("No se pudo guardar caché ShowMyTrades: %s", error)
+            events = fresh
+        except Exception as error:
+            SHOWMYTRADES_LAST_ERROR = str(error)[:240]
+            logger.warning("ShowMyTrades tampoco está disponible: %s", error)
+            # Se conserva la última descarga persistida, aunque tenga más de 15 min.
+            if not events:
+                return None
+    result = []
+    wanted = str(impact or "").lower()
+    for event in events:
+        day = event_local_date(event)
+        if not day or not (start_date <= day <= end_date):
+            continue
+        if wanted and event.get("impact") != wanted:
+            continue
+        if event.get("impact") not in ("high", "medium"):
+            continue
+        result.append(event)
+    result.sort(key=event_sort_key)
+    return result
+
+
 async def fetch_calendar_events(start_date, end_date=None, impact=None):
     """Eventos económicos entre dos fechas (en la zona horaria del bot).
 
@@ -1427,9 +1568,18 @@ async def fetch_calendar_events(start_date, end_date=None, impact=None):
     wanted = str(impact or "").lower()
 
     def pick(events):
+        # Regla única de ApexQuant: nunca mostrar ni publicar impacto bajo.
+        if wanted == "low":
+            return []
+        allowed = [
+            e for e in events
+            if str(e.get("impact") or "").lower() in ("high", "medium")
+        ]
         if not wanted:
-            return list(events)
-        return [e for e in events if str(e.get("impact") or "").lower() == wanted]
+            return allowed
+        if wanted not in ("high", "medium"):
+            return []
+        return [e for e in allowed if str(e.get("impact") or "").lower() == wanted]
 
     _fc_disk_load()
 
@@ -1454,12 +1604,18 @@ async def fetch_calendar_events(start_date, end_date=None, impact=None):
             timeout=90
         )
     except HTTPError as error:
-        logger.error("Error obteniendo calendario: HTTP %s", error.code)
+        logger.error("FinanceCalendar falló (HTTP %s); se activa ShowMyTrades.", error.code)
+        fallback = await _showmytrades_fallback(start_date, end_date, wanted)
+        if fallback is not None:
+            return fallback
         return pick(cached[1]) if cached else None
     except Exception as error:
         if time.time() - FC_PAUSE_LOG["at"] > 1800:
             FC_PAUSE_LOG["at"] = time.time()
-            logger.warning("Calendario no disponible ahora: %s", error)
+            logger.warning("FinanceCalendar no disponible; se activa ShowMyTrades: %s", error)
+        fallback = await _showmytrades_fallback(start_date, end_date, wanted)
+        if fallback is not None:
+            return fallback
         return pick(cached[1]) if cached else None
 
     events = []
@@ -2074,7 +2230,9 @@ async def show_calendar_context(query, event_key):
         "💱 <b>Posibles divisas afectadas:</b>",
         escape(", ".join(affected) or "N/D"),
         "",
-        event_result_interpretation(consensus, prior, actual)
+        event_result_interpretation(consensus, prior, actual),
+        "",
+        calendar_source_credit(event)
     ]
 
     keyboard = []
@@ -2305,7 +2463,14 @@ async def show_events(
         f"🕒 <i>Horas en {escape(CALENDAR_TZ_LABEL)}</i>"
     )
 
+    using_smt = any(
+        isinstance(event, dict) and event.get("source") == "showmytrades"
+        for event in (events or [])
+    )
     footer = (
+        '\n\nℹ️ Fuente: <a href="https://showmytrades.com/tools/economic-calendar">'
+        "Data from ShowMyTrades</a>"
+        if using_smt else
         '\n\nℹ️ Fuente: <a href="https://www.financecalendar.com">'
         "FinanceCalendar.com</a>"
     )
@@ -2429,12 +2594,11 @@ async def show_calendar_mode(query, mode, page=0):
             page=page, mode=mode
         )
 
-    elif mode in ("high", "medium", "low"):
+    elif mode in ("high", "medium"):
         start, end = week_dates()
         icon, label = {
             "high": ("🔴", "ALTO"),
-            "medium": ("🟠", "MEDIO"),
-            "low": ("🟢", "BAJO")
+            "medium": ("🟠", "MEDIO")
         }[mode]
         await show_events(
             query, start, end,
@@ -2486,7 +2650,7 @@ async def show_calendar_medium(query):
 
 
 async def show_calendar_low(query):
-    await show_calendar_mode(query, "low")
+    await show_calendar_mode(query, "")
 
 
 async def show_calendar_page(query, payload):
@@ -4279,9 +4443,14 @@ ALERT_DISCLAIMER = (
     "una recomendación de entrada; los escenarios son tendencias habituales y no "
     "una predicción. Las noticias pueden provocar picos de volatilidad, spreads más "
     "amplios y deslizamiento: gestiona tu riesgo y evita sobreexponerte durante la "
-    "publicación.\n\n"
-    '📊 Datos: <a href="https://www.financecalendar.com">FinanceCalendar.com</a>'
+    "publicación."
 )
+
+
+def calendar_source_credit(event):
+    if isinstance(event, dict) and event.get("source") == "showmytrades":
+        return '📊 Datos: <a href="https://showmytrades.com/tools/economic-calendar">Data from ShowMyTrades</a>'
+    return '📊 Datos: <a href="https://www.financecalendar.com">FinanceCalendar.com</a>'
 
 
 def build_high_impact_alert(event, minutes):
@@ -4342,7 +4511,7 @@ def build_high_impact_alert(event, minutes):
             ""
         ])
 
-    lines.append(ALERT_DISCLAIMER)
+    lines.extend([calendar_source_credit(event), "", ALERT_DISCLAIMER])
 
     return "\n".join(lines)[:4000]
 
@@ -4417,6 +4586,8 @@ def build_result_alert(event):
         reading,
         "",
         "ℹ️ La primera reacción del mercado puede ser brusca y revertirse en minutos.",
+        "",
+        calendar_source_credit(event),
         "",
         ALERT_DISCLAIMER
     ])
@@ -7211,7 +7382,14 @@ async def assistant_calendar_context(question):
             rows.append(f"- {dt} | {impact.upper()} | {currency} | {name}")
             if len(rows) >= max_rows:
                 break
-        return "\n\nCALENDARIO APEXQUANT:\n" + "\n".join(rows) if rows else ""
+        if rows:
+            source_credit = (
+                "\nFuente: Data from ShowMyTrades (https://showmytrades.com/tools/economic-calendar)"
+                if any(e.get("source") == "showmytrades" for e in events or [])
+                else "\nFuente: FinanceCalendar.com"
+            )
+            return "\n\nCALENDARIO APEXQUANT:\n" + "\n".join(rows) + source_credit
+        return ""
     except Exception as error:
         logger.warning("No se pudo adjuntar calendario al asistente: %s", error)
         return ""
