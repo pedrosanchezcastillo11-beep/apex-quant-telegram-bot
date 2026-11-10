@@ -1115,7 +1115,136 @@ def is_economic_event(event):
     return impact in ("high", "medium", "low") and bool(event_currency(event))
 
 
+def _fc_int_env(name, default):
+    try:
+        return int(float(os.getenv(name, str(default))))
+    except (TypeError, ValueError):
+        return default
+
+
+# Desde el 3-nov-2026 FinanceCalendar exige clave en toda consulta y las cuentas
+# gratuitas nuevas tienen 250 consultas por día y 5.000 por mes. El bot se
+# protege con un presupuesto propio, una caché larga (corta sólo alrededor de
+# cada noticia) y una pausa automática si el servidor rechaza la clave o la cuota.
+FC_DAILY_BUDGET = _fc_int_env("FC_DAILY_BUDGET", 160)
+FC_MONTHLY_BUDGET = _fc_int_env("FC_MONTHLY_BUDGET", 4500)
+CALENDAR_CACHE_IDLE_SECONDS = _fc_int_env("CALENDAR_CACHE_IDLE_SECONDS", 1200)
+CALENDAR_CACHE_NEAR_SECONDS = _fc_int_env("CALENDAR_CACHE_NEAR_SECONDS", 240)
+CALENDAR_NEAR_BEHIND_MINUTES = 30
+CALENDAR_NEAR_AHEAD_MINUTES = 2
+FC_CACHE_FILE = os.getenv("FC_CACHE_FILE", "/data/fc_cache.json").strip()
+FC_STATE_FILE = os.getenv("FC_STATE_FILE", "/data/fc_state.json").strip()
+
+FC_STATE = {
+    "day": "", "used": 0,
+    "month": "", "month_used": 0,
+    "blocked_until": 0.0,
+    "last_error": "", "last_error_at": 0.0,
+    "last_ok_at": 0.0,
+}
+FC_MEM_CACHE = {}          # (inicio, fin) -> (hora_unix, eventos)
+FC_DISK_LOADED = False
+FC_PAUSE_LOG = {"at": 0.0}
+
+
+def _fc_state_load():
+    try:
+        saved = _load_json_file(FC_STATE_FILE, {})
+        if isinstance(saved, dict):
+            for key in FC_STATE:
+                if key in saved:
+                    FC_STATE[key] = saved[key]
+    except Exception:
+        pass
+
+
+def _fc_state_save():
+    try:
+        _save_json_file(FC_STATE_FILE, FC_STATE)
+    except Exception:
+        pass
+
+
+def _fc_roll_periods():
+    now = datetime.now(timezone.utc)
+    day = now.strftime("%Y-%m-%d")
+    month = now.strftime("%Y-%m")
+
+    if FC_STATE.get("day") != day:
+        FC_STATE["day"] = day
+        FC_STATE["used"] = 0
+
+    if FC_STATE.get("month") != month:
+        FC_STATE["month"] = month
+        FC_STATE["month_used"] = 0
+
+
+_fc_state_load()
+
+
+def fc_status_text():
+    """Resumen del estado de FinanceCalendar para el panel de administración."""
+
+    _fc_roll_periods()
+    lines = [
+        f"• consultas hoy: {FC_STATE['used']}/{FC_DAILY_BUDGET} · "
+        f"mes: {FC_STATE['month_used']}/{FC_MONTHLY_BUDGET}"
+    ]
+
+    remaining = FC_STATE.get("blocked_until", 0) - time.time()
+
+    if remaining > 0:
+        lines.append(f"• FinanceCalendar en pausa ~{int(remaining // 60)} min")
+
+    if FC_STATE.get("last_error"):
+        lines.append(f"• último rechazo: <code>{escape(str(FC_STATE['last_error'])[:200])}</code>")
+
+    return lines
+
+
+def _fc_register_http_error(code, body):
+    text = " ".join(str(body or "").split())[:200]
+    message = f"HTTP {code}: {text}" if text else f"HTTP {code}"
+
+    FC_STATE["last_error"] = message
+    FC_STATE["last_error_at"] = time.time()
+
+    now = datetime.now(timezone.utc)
+
+    if code == 429:
+        tomorrow = (now + timedelta(days=1)).replace(hour=0, minute=1, second=0, microsecond=0)
+        until = tomorrow.timestamp()
+    elif code in (401, 402, 403):
+        until = time.time() + 3600
+    else:
+        _fc_state_save()
+        return
+
+    FC_STATE["blocked_until"] = until
+    _fc_state_save()
+
+    logger.error(
+        "FinanceCalendar rechazó la consulta (%s). Se pausa hasta %s UTC para no "
+        "gastar cuota; mientras tanto se usan los datos guardados.",
+        message, datetime.fromtimestamp(until, timezone.utc).strftime("%Y-%m-%d %H:%M")
+    )
+
+
 def _fc_request(params):
+    _fc_roll_periods()
+
+    if time.time() < FC_STATE.get("blocked_until", 0):
+        raise RuntimeError("FinanceCalendar en pausa (cuota o clave rechazada)")
+
+    if FC_STATE["used"] >= FC_DAILY_BUDGET:
+        raise RuntimeError("presupuesto diario de FinanceCalendar agotado")
+
+    if FC_STATE["month_used"] >= FC_MONTHLY_BUDGET:
+        raise RuntimeError("presupuesto mensual de FinanceCalendar agotado")
+
+    FC_STATE["used"] += 1
+    FC_STATE["month_used"] += 1
+
     url = FINANCE_CALENDAR_BASE + "/calendar?" + urlencode(params)
 
     headers = {
@@ -1128,8 +1257,22 @@ def _fc_request(params):
 
     request = Request(url, headers=headers)
 
-    with urlopen(request, timeout=20) as response:
-        return json.loads(response.read().decode("utf-8"))
+    try:
+        with urlopen(request, timeout=20) as response:
+            data = json.loads(response.read().decode("utf-8"))
+    except HTTPError as error:
+        body = ""
+        try:
+            body = error.read().decode("utf-8", "replace")
+        except Exception:
+            pass
+        _fc_register_http_error(error.code, body)
+        raise
+
+    FC_STATE["last_ok_at"] = time.time()
+    FC_STATE["blocked_until"] = 0.0
+    _fc_state_save()
+    return data
 
 
 def _fc_collect(params):
@@ -1138,7 +1281,7 @@ def _fc_collect(params):
     rows = []
     offset = 0
 
-    for _ in range(6):
+    for _ in range(3):
         data = _fc_request(dict(params, limit=500, offset=offset))
 
         if isinstance(data, dict):
@@ -1166,28 +1309,16 @@ def _fc_collect(params):
     return rows
 
 
-def _fc_load(start_date, end_date, impact=None):
+def _fc_load(start_date, end_date):
+    """Una sola consulta (sin filtros) por rango; el impacto se filtra aquí."""
+
     base = {
         "from": start_date.strftime("%Y-%m-%d"),
         "to": end_date.strftime("%Y-%m-%d"),
         "tz": CALENDAR_TZ_LABEL
     }
 
-    if impact:
-        base["impact"] = impact
-
-    rows = []
-
-    try:
-        for category in CALENDAR_CATEGORIES:
-            rows.extend(_fc_collect(dict(base, category=category)))
-    except Exception as error:
-        logger.warning(
-            "FinanceCalendar: falló la consulta por categoría (%s). "
-            "Se reintenta sin filtro y se limpian los eventos aquí.",
-            error
-        )
-        rows = _fc_collect(base)
+    rows = _fc_collect(base)
 
     unique = []
     seen = set()
@@ -1209,12 +1340,15 @@ def _fc_load(start_date, end_date, impact=None):
     return unique
 
 
-def _fc_load_with_retry(start_date, end_date, impact=None):
+def _fc_load_with_retry(start_date, end_date):
     last_error = None
 
     for attempt in range(2):
         try:
-            return _fc_load(start_date, end_date, impact)
+            return _fc_load(start_date, end_date)
+        except (HTTPError, RuntimeError):
+            # Rechazo del servidor o pausa propia: reintentar sólo gasta cuota.
+            raise
         except Exception as error:
             last_error = error
             if attempt == 0:
@@ -1223,20 +1357,87 @@ def _fc_load_with_retry(start_date, end_date, impact=None):
     raise last_error
 
 
+def _fc_cache_key_text(key):
+    return f"{key[0]}|{key[1]}"
+
+
+def _fc_disk_load():
+    global FC_DISK_LOADED
+
+    if FC_DISK_LOADED:
+        return
+
+    FC_DISK_LOADED = True
+
+    try:
+        saved = _load_json_file(FC_CACHE_FILE, {})
+
+        for text_key, value in (saved or {}).items():
+            start_text, end_text = text_key.split("|", 1)
+            stamp, events = value
+            FC_MEM_CACHE.setdefault((start_text, end_text), (float(stamp), list(events)))
+    except Exception as error:
+        logger.warning("No se pudo leer la caché del calendario: %s", error)
+
+
+def _fc_disk_save():
+    try:
+        newest = sorted(FC_MEM_CACHE.items(), key=lambda item: item[1][0], reverse=True)[:4]
+        _save_json_file(
+            FC_CACHE_FILE,
+            {_fc_cache_key_text(key): [value[0], value[1]] for key, value in newest}
+        )
+    except Exception as error:
+        logger.warning("No se pudo guardar la caché del calendario: %s", error)
+
+
+def _fc_cache_ttl(events):
+    """Caché larga normalmente; corta sólo cuando hay una noticia publicándose."""
+
+    now = datetime.now(timezone.utc)
+
+    for event in events:
+        if str(event.get("impact") or "").lower() not in ("high", "medium"):
+            continue
+
+        moment = event_datetime_utc(event)
+
+        if not moment:
+            continue
+
+        minutes = (moment - now).total_seconds() / 60
+
+        if -CALENDAR_NEAR_BEHIND_MINUTES <= minutes <= CALENDAR_NEAR_AHEAD_MINUTES:
+            return CALENDAR_CACHE_NEAR_SECONDS
+
+    return CALENDAR_CACHE_IDLE_SECONDS
+
+
 async def fetch_calendar_events(start_date, end_date=None, impact=None):
     """Eventos económicos entre dos fechas (en la zona horaria del bot).
 
-    Devuelve una lista ordenada por hora, o None si FinanceCalendar no responde.
+    Devuelve una lista ordenada por hora, o None si no hay ni datos guardados.
+    Todas las consultas de un mismo rango comparten una sola descarga; el filtro
+    de impacto (high/medium/low) se aplica localmente para gastar menos cuota.
     """
 
     if end_date is None:
         end_date = start_date
 
-    cache_key = (start_date.isoformat(), end_date.isoformat(), impact or "")
-    cached = CALENDAR_FETCH_CACHE.get(cache_key)
+    wanted = str(impact or "").lower()
 
-    if cached and time.monotonic() - cached[0] < CALENDAR_CACHE_SECONDS:
-        return list(cached[1])
+    def pick(events):
+        if not wanted:
+            return list(events)
+        return [e for e in events if str(e.get("impact") or "").lower() == wanted]
+
+    _fc_disk_load()
+
+    cache_key = (start_date.isoformat(), end_date.isoformat())
+    cached = FC_MEM_CACHE.get(cache_key)
+
+    if cached and time.time() - cached[0] < _fc_cache_ttl(cached[1]):
+        return pick(cached[1])
 
     loop = asyncio.get_running_loop()
 
@@ -1248,17 +1449,18 @@ async def fetch_calendar_events(start_date, end_date=None, impact=None):
                 None,
                 _fc_load_with_retry,
                 start_date - timedelta(days=1),
-                end_date + timedelta(days=1),
-                impact
+                end_date + timedelta(days=1)
             ),
             timeout=90
         )
     except HTTPError as error:
         logger.error("Error obteniendo calendario: HTTP %s", error.code)
-        return list(cached[1]) if cached else None
+        return pick(cached[1]) if cached else None
     except Exception as error:
-        logger.error("Error obteniendo calendario: %s", error)
-        return list(cached[1]) if cached else None
+        if time.time() - FC_PAUSE_LOG["at"] > 1800:
+            FC_PAUSE_LOG["at"] = time.time()
+            logger.warning("Calendario no disponible ahora: %s", error)
+        return pick(cached[1]) if cached else None
 
     events = []
 
@@ -1270,13 +1472,15 @@ async def fetch_calendar_events(start_date, end_date=None, impact=None):
 
     events.sort(key=event_sort_key)
 
-    CALENDAR_FETCH_CACHE[cache_key] = (time.monotonic(), events)
+    FC_MEM_CACHE[cache_key] = (time.time(), events)
 
-    if len(CALENDAR_FETCH_CACHE) > 40:
-        oldest = min(CALENDAR_FETCH_CACHE, key=lambda k: CALENDAR_FETCH_CACHE[k][0])
-        CALENDAR_FETCH_CACHE.pop(oldest, None)
+    if len(FC_MEM_CACHE) > 12:
+        oldest = min(FC_MEM_CACHE, key=lambda k: FC_MEM_CACHE[k][0])
+        FC_MEM_CACHE.pop(oldest, None)
 
-    return list(events)
+    _fc_disk_save()
+
+    return pick(events)
 
 
 # ============================================================
@@ -4265,6 +4469,14 @@ async def community_high_impact_monitor(application):
                     )
                     if batch is None:
                         MONITOR_STATUS.setdefault("eventos", {})["calendar_error"] = time.time()
+                        await _monitor_alert(
+                            application, "calendario_sin_datos",
+                            "⚠️ <b>El calendario económico no responde</b> y no hay datos guardados, "
+                            "por eso el Canal no recibe eventos.\n"
+                            f"<code>{escape(str(FC_STATE.get('last_error') or 'sin detalle'))}</code>\n\n"
+                            "Revisa la cuota/clave de FinanceCalendar (FINANCECALENDAR_API_KEY en Deployka).",
+                            hours=6
+                        )
                     else:
                         MONITOR_STATUS.setdefault("eventos", {})["calendar_ok"] = time.time()
 
@@ -7911,6 +8123,7 @@ async def admin_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
             lines.append(f"• calendario OK: {_ago(status.get('calendar_ok'))}")
             if status.get("calendar_error"):
                 lines.append(f"• último fallo del calendario: {_ago(status.get('calendar_error'))}")
+            lines.extend(fc_status_text())
 
         if status.get("restarts"):
             ts, reason = status.get("last_restart", (None, ""))
