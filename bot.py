@@ -41,6 +41,19 @@ from matplotlib import pyplot as plt
 from academy_visuals import BUILDERS as ACADEMY_VISUAL_BUILDERS
 from academy_visuals import CAPTIONS as ACADEMY_VISUAL_CAPTIONS
 
+# Imágenes del módulo «Figuras Chartistas» (archivo chart_patterns_visuals.py).
+# Si el archivo no está desplegado, el bot sigue funcionando y solo se omiten las imágenes.
+try:
+    from chart_patterns_visuals import BUILDERS as CHART_PATTERN_BUILDERS
+    from chart_patterns_visuals import CAPTIONS as CHART_PATTERN_CAPTIONS
+    ACADEMY_VISUAL_BUILDERS.update(CHART_PATTERN_BUILDERS)
+    ACADEMY_VISUAL_CAPTIONS.update(CHART_PATTERN_CAPTIONS)
+except Exception as _chart_visuals_error:  # pragma: no cover
+    logging.getLogger(__name__).warning(
+        "No se cargó chart_patterns_visuals.py (%s): el módulo Figuras Chartistas no tendrá imágenes.",
+        _chart_visuals_error,
+    )
+
 # ============================================================
 # CONFIGURACIÓN
 # ============================================================
@@ -3078,6 +3091,450 @@ async def show_settings(query):
 # ACADEMIA APEX QUANT
 # ============================================================
 
+# ============================================================
+# MÓDULO «FIGURAS CHARTISTAS» (después del módulo Técnico)
+# ============================================================
+# Cada figura tiene su propia página (con botones Anterior/Siguiente) y su
+# imagen con velas japonesas, generada por chart_patterns_visuals.py.
+
+def _pattern_page(subtitle, what, form, mark, confirm, trade, errors):
+    return (
+        f"<i>{subtitle}</i>\n\n"
+        f"🧠 <b>Qué representa</b>\n{what}\n\n"
+        f"🧱 <b>Cómo se forma</b>\n{form}\n\n"
+        f"✏️ <b>Cómo se marca</b>\n{mark}\n\n"
+        f"✅ <b>Confirmación (imprescindible)</b>\n{confirm}\n\n"
+        f"🎯 <b>Cómo se opera (ejemplo educativo)</b>\n{trade}\n\n"
+        f"⚠️ <b>Errores y señales de invalidación</b>\n{errors}"
+    )
+
+
+_PATTERN_RISK = (
+    "• Antes de entrar, comprueba que el beneficio potencial compense el riesgo "
+    "y calcula el lotaje con tu Stop Loss (Módulo 1)."
+)
+
+CHART_PATTERN_GROUPS = [
+    ("🔄 Reversión", ["hch", "hch_inv", "doble_techo", "doble_suelo", "triple_techo", "triple_suelo"]),
+    ("➡️ Continuación", ["bandera_alc", "bandera_baj", "banderin_alc", "banderin_baj", "tri_asc", "tri_desc"]),
+    ("↔️ Bilaterales", ["tri_sim", "rectangulo"]),
+    ("📐 Cuñas", ["cuna_asc", "cuna_desc"]),
+]
+
+CHART_PATTERN_ORDER = [pid for _group, ids in CHART_PATTERN_GROUPS for pid in ids]
+
+CHART_PATTERNS = {
+    "hch": {
+        "button": "Hombro-Cabeza-Hombro",
+        "title": "📐 Hombro-Cabeza-Hombro (HCH)",
+        "visual": "fig_hch",
+        "text": _pattern_page(
+            "Reversión · sesgo bajista (aparece tras una tendencia alcista)",
+            "Los compradores logran un último máximo más alto (la cabeza), pero ya no pueden repetirlo: "
+            "el siguiente intento (hombro derecho) se queda por debajo. Es una pérdida progresiva de fuerza compradora.",
+            "1. Tendencia alcista previa (sin tendencia previa no hay nada que revertir).\n"
+            "2. Hombro izquierdo: un máximo y su retroceso (mínimo a).\n"
+            "3. Cabeza: un máximo más alto que el hombro izquierdo y su retroceso (mínimo b).\n"
+            "4. Hombro derecho: un máximo más bajo que la cabeza, aproximadamente a la altura del hombro izquierdo.",
+            "• Marca los tres máximos (1, 2 y 3) y los dos mínimos intermedios (a y b).\n"
+            "• Línea de cuello: une a y b, y prolóngala hacia la derecha. Puede ser horizontal o inclinada.\n"
+            "• Mide H: la distancia vertical entre la cabeza y la línea de cuello.",
+            "La figura NO está completa hasta que una vela cierra por debajo de la línea de cuello. "
+            "Una mecha que la perfora no basta. Lo habitual es menos volumen en la cabeza que en el hombro "
+            "izquierdo y más volumen en la ruptura.",
+            "• Entrada: al cierre de la vela de ruptura, o en la reentrada (retest) si el precio vuelve a la línea de cuello y la rechaza.\n"
+            "• Stop Loss: sobre el hombro derecho (más ajustado) o sobre la cabeza (más conservador).\n"
+            "• Objetivo orientativo: H proyectada hacia abajo desde el punto de ruptura.\n" + _PATTERN_RISK,
+            "• Entrar antes de la ruptura confirmada solo porque la figura «se ve».\n"
+            "• Si el hombro derecho supera a la cabeza, la figura se invalida.\n"
+            "• Si tras la ruptura el precio vuelve a cerrar por encima de la línea de cuello, fue una ruptura fallida y el escenario pierde validez.",
+        ),
+    },
+    "hch_inv": {
+        "button": "HCH invertido",
+        "title": "📐 Hombro-Cabeza-Hombro invertido",
+        "visual": "fig_hch_inv",
+        "text": _pattern_page(
+            "Reversión · sesgo alcista (aparece tras una tendencia bajista)",
+            "Los vendedores logran un último mínimo más bajo (la cabeza), pero ya no pueden repetirlo: "
+            "el siguiente intento (hombro derecho) se queda por encima. Es una pérdida progresiva de fuerza vendedora.",
+            "1. Tendencia bajista previa.\n"
+            "2. Hombro izquierdo: un mínimo y su rebote (máximo a).\n"
+            "3. Cabeza: un mínimo más bajo que el hombro izquierdo y su rebote (máximo b).\n"
+            "4. Hombro derecho: un mínimo más alto que la cabeza, aproximadamente a la altura del hombro izquierdo.",
+            "• Marca los tres mínimos (1, 2 y 3) y los dos máximos intermedios (a y b).\n"
+            "• Línea de cuello: une a y b, y prolóngala hacia la derecha.\n"
+            "• Mide H: la distancia vertical entre la línea de cuello y la cabeza.",
+            "La figura NO está completa hasta que una vela cierra por encima de la línea de cuello. "
+            "Una mecha no basta. Se busca más volumen en la ruptura.",
+            "• Entrada: al cierre de la vela de ruptura, o en la reentrada (retest) si el precio vuelve a la línea de cuello y la respeta como soporte.\n"
+            "• Stop Loss: bajo el hombro derecho (más ajustado) o bajo la cabeza (más conservador).\n"
+            "• Objetivo orientativo: H proyectada hacia arriba desde el punto de ruptura.\n" + _PATTERN_RISK,
+            "• Entrar antes de la ruptura confirmada.\n"
+            "• Si el hombro derecho cae por debajo de la cabeza, la figura se invalida.\n"
+            "• Si tras la ruptura el precio vuelve a cerrar por debajo de la línea de cuello, fue una ruptura fallida.",
+        ),
+    },
+    "doble_techo": {
+        "button": "Doble techo",
+        "title": "📐 Doble techo",
+        "visual": "fig_doble_techo",
+        "text": _pattern_page(
+            "Reversión · sesgo bajista (aparece tras una tendencia alcista)",
+            "El precio intenta dos veces superar la misma zona y fracasa: los vendedores la defienden. "
+            "El segundo intento fallido muestra que los compradores pierden fuerza.",
+            "1. Tendencia alcista previa.\n"
+            "2. Techo 1 y retroceso hasta un valle.\n"
+            "3. Techo 2 en una zona similar al primero (no tiene que ser idéntico: se trata de una zona).\n"
+            "4. Entre ambos techos debe haber un retroceso claro, no velas pegadas.",
+            "• Marca los dos techos (1 y 2) y la zona de resistencia que forman.\n"
+            "• Línea de cuello: horizontal, en el mínimo del valle entre los dos techos.\n"
+            "• Mide H: distancia vertical entre los techos y la línea de cuello.",
+            "La señal se confirma cuando una vela cierra por debajo de la línea de cuello. "
+            "Mientras no cierre por debajo, solo es un posible rango. Se busca más volumen en la ruptura.",
+            "• Entrada: al cierre de la vela de ruptura, o en el retest de la línea de cuello rechazada desde abajo.\n"
+            "• Stop Loss: sobre el segundo techo (o sobre el techo más alto).\n"
+            "• Objetivo orientativo: H proyectada hacia abajo desde la línea de cuello.\n" + _PATTERN_RISK,
+            "• Vender en el segundo techo anticipando la figura, sin ruptura de la línea de cuello.\n"
+            "• Si el precio cierra por encima de los techos, la figura se invalida.\n"
+            "• Los falsos rompimientos son frecuentes: el mercado puede perforar la línea de cuello y volver dentro; por eso se espera el cierre.",
+        ),
+    },
+    "doble_suelo": {
+        "button": "Doble suelo",
+        "title": "📐 Doble suelo",
+        "visual": "fig_doble_suelo",
+        "text": _pattern_page(
+            "Reversión · sesgo alcista (aparece tras una tendencia bajista)",
+            "El precio intenta dos veces romper la misma zona hacia abajo y fracasa: los compradores la defienden. "
+            "El segundo intento fallido muestra que los vendedores pierden fuerza.",
+            "1. Tendencia bajista previa.\n"
+            "2. Suelo 1 y rebote hasta un pico.\n"
+            "3. Suelo 2 en una zona similar al primero.\n"
+            "4. Entre ambos suelos debe haber un rebote claro.",
+            "• Marca los dos suelos (1 y 2) y la zona de soporte que forman.\n"
+            "• Línea de cuello: horizontal, en el máximo del pico entre los dos suelos.\n"
+            "• Mide H: distancia vertical entre la línea de cuello y los suelos.",
+            "La señal se confirma cuando una vela cierra por encima de la línea de cuello. "
+            "Mientras no cierre por encima, solo es un posible rango. Se busca más volumen en la ruptura.",
+            "• Entrada: al cierre de la vela de ruptura, o en el retest de la línea de cuello respetada como soporte.\n"
+            "• Stop Loss: bajo el segundo suelo (o bajo el suelo más bajo).\n"
+            "• Objetivo orientativo: H proyectada hacia arriba desde la línea de cuello.\n" + _PATTERN_RISK,
+            "• Comprar en el segundo suelo anticipando la figura, sin ruptura de la línea de cuello.\n"
+            "• Si el precio cierra por debajo de los suelos, la figura se invalida.\n"
+            "• Cuidado con los falsos rompimientos: espera el cierre.",
+        ),
+    },
+    "triple_techo": {
+        "button": "Triple techo",
+        "title": "📐 Triple techo",
+        "visual": "fig_triple_techo",
+        "text": _pattern_page(
+            "Reversión · sesgo bajista (aparece tras una tendencia alcista)",
+            "El precio choca tres veces contra la misma zona sin poder superarla. Es una prueba más del nivel que el doble techo, "
+            "pero tres rechazos no garantizan la caída: hace falta la ruptura.",
+            "1. Tendencia alcista previa.\n"
+            "2. Tres máximos en la misma zona (1, 2 y 3), separados por retrocesos claros.\n"
+            "3. Dos mínimos intermedios a un nivel similar, que forman un soporte.",
+            "• Marca los tres techos y la zona de resistencia.\n"
+            "• Línea de cuello: el soporte que une los dos mínimos intermedios.\n"
+            "• Mide H: distancia vertical entre los techos y ese soporte.",
+            "Se confirma cuando una vela cierra por debajo del soporte. Se busca más volumen en la ruptura. "
+            "Tarda más en formarse que el doble techo y es menos frecuente; no por ello es infalible.",
+            "• Entrada: al cierre de la vela de ruptura, o en el retest del soporte roto (ahora resistencia).\n"
+            "• Stop Loss: sobre el techo más alto.\n"
+            "• Objetivo orientativo: H proyectada hacia abajo desde el soporte.\n" + _PATTERN_RISK,
+            "• Anticipar la caída en el tercer techo sin esperar la ruptura.\n"
+            "• Si el precio cierra por encima de la zona de techos, la figura se invalida (puede ser el inicio de una ruptura alcista).\n"
+            "• Distingue el contexto: tras una tendencia alcista, una ruptura bajista es reversión; si el rango rompe a favor de la tendencia previa, se comporta como un rectángulo.",
+        ),
+    },
+    "triple_suelo": {
+        "button": "Triple suelo",
+        "title": "📐 Triple suelo",
+        "visual": "fig_triple_suelo",
+        "text": _pattern_page(
+            "Reversión · sesgo alcista (aparece tras una tendencia bajista)",
+            "El precio choca tres veces contra la misma zona sin poder romperla hacia abajo. "
+            "Tres rebotes no garantizan la subida: hace falta la ruptura.",
+            "1. Tendencia bajista previa.\n"
+            "2. Tres mínimos en la misma zona (1, 2 y 3), separados por rebotes claros.\n"
+            "3. Dos máximos intermedios a un nivel similar, que forman una resistencia.",
+            "• Marca los tres suelos y la zona de soporte.\n"
+            "• Línea de cuello: la resistencia que une los dos máximos intermedios.\n"
+            "• Mide H: distancia vertical entre esa resistencia y los suelos.",
+            "Se confirma cuando una vela cierra por encima de la resistencia. Se busca más volumen en la ruptura.",
+            "• Entrada: al cierre de la vela de ruptura, o en el retest de la resistencia rota (ahora soporte).\n"
+            "• Stop Loss: bajo el suelo más bajo.\n"
+            "• Objetivo orientativo: H proyectada hacia arriba desde la resistencia.\n" + _PATTERN_RISK,
+            "• Anticipar la subida en el tercer suelo sin esperar la ruptura.\n"
+            "• Si el precio cierra por debajo de la zona de suelos, la figura se invalida.\n"
+            "• Cuidado con los barridos de liquidez bajo los suelos: espera el cierre.",
+        ),
+    },
+    "bandera_alc": {
+        "button": "Bandera alcista",
+        "title": "📐 Bandera alcista",
+        "visual": "fig_bandera_alc",
+        "text": _pattern_page(
+            "Continuación · sesgo alcista",
+            "Tras un impulso fuerte, el mercado hace una pausa corta y ordenada antes de intentar continuar. "
+            "Quienes compraron toman beneficios poco a poco, pero sin que los vendedores tomen el control.",
+            "1. Mástil: movimiento alcista rápido y fuerte, con velas grandes y volumen alto.\n"
+            "2. Bandera: retroceso corto dentro de un canal paralelo inclinado en contra del mástil (descendente), con volumen decreciente.\n"
+            "3. Como referencia, el retroceso no suele superar la mitad del mástil, y la bandera suele ser breve en relación con él.",
+            "• Mide el mástil M: desde donde arranca el impulso hasta su máximo.\n"
+            "• Traza dos líneas paralelas que contengan el retroceso (mínimo 2 toques en cada una).\n"
+            "• La línea superior de la bandera es la que debe romperse.",
+            "Una vela debe cerrar por encima de la línea superior de la bandera, idealmente con más volumen. "
+            "Un simple toque o una mecha no confirma la ruptura.",
+            "• Entrada: al cierre de la vela de ruptura, o en el retest de la línea superior rota (ahora soporte).\n"
+            "• Stop Loss: bajo el mínimo de la bandera.\n"
+            "• Objetivo orientativo: M proyectada hacia arriba desde el punto de ruptura.\n" + _PATTERN_RISK,
+            "• Banderas largas o que retroceden más de la mitad del mástil pierden calidad.\n"
+            "• Sin un mástil claro no hay bandera, solo un canal descendente.\n"
+            "• Si una vela cierra por debajo de la línea inferior de la bandera, la figura se invalida.",
+        ),
+    },
+    "bandera_baj": {
+        "button": "Bandera bajista",
+        "title": "📐 Bandera bajista",
+        "visual": "fig_bandera_baj",
+        "text": _pattern_page(
+            "Continuación · sesgo bajista",
+            "Tras un impulso bajista fuerte, el mercado hace una pausa corta y ordenada antes de intentar continuar la caída. "
+            "Los compradores rebotan un poco, pero sin tomar el control.",
+            "1. Mástil: movimiento bajista rápido y fuerte, con velas grandes y volumen alto.\n"
+            "2. Bandera: rebote corto dentro de un canal paralelo inclinado en contra del mástil (ascendente), con volumen decreciente.\n"
+            "3. Como referencia, el rebote no suele superar la mitad del mástil.",
+            "• Mide el mástil M: desde donde arranca el impulso hasta su mínimo.\n"
+            "• Traza dos líneas paralelas que contengan el rebote (mínimo 2 toques en cada una).\n"
+            "• La línea inferior de la bandera es la que debe romperse.",
+            "Una vela debe cerrar por debajo de la línea inferior de la bandera, idealmente con más volumen. "
+            "Una mecha no confirma la ruptura.",
+            "• Entrada: al cierre de la vela de ruptura, o en el retest de la línea inferior rota (ahora resistencia).\n"
+            "• Stop Loss: sobre el máximo de la bandera.\n"
+            "• Objetivo orientativo: M proyectada hacia abajo desde el punto de ruptura.\n" + _PATTERN_RISK,
+            "• Banderas largas o que rebotan más de la mitad del mástil pierden calidad.\n"
+            "• Sin un mástil claro no hay bandera.\n"
+            "• Si una vela cierra por encima de la línea superior de la bandera, la figura se invalida.",
+        ),
+    },
+    "banderin_alc": {
+        "button": "Banderín alcista",
+        "title": "📐 Banderín alcista",
+        "visual": "fig_banderin_alc",
+        "text": _pattern_page(
+            "Continuación · sesgo alcista",
+            "Igual que la bandera, es una pausa tras un impulso fuerte, pero la consolidación se comprime "
+            "en un pequeño triángulo: la volatilidad se contrae antes de decidir.",
+            "1. Mástil: impulso alcista fuerte con volumen alto.\n"
+            "2. Banderín: máximos decrecientes y mínimos crecientes que convergen, con volumen decreciente.\n"
+            "3. Es de corta duración; la ruptura suele producirse antes de llegar al vértice.",
+            "• Mide el mástil M.\n"
+            "• Traza las dos líneas convergentes del banderín (mínimo 2 toques en cada una).\n"
+            "• La línea superior es la que debe romperse.",
+            "Una vela debe cerrar por encima de la línea superior del banderín, idealmente con más volumen. "
+            "Sin cierre no hay confirmación.",
+            "• Entrada: al cierre de la vela de ruptura, o en el retest de la línea superior rota.\n"
+            "• Stop Loss: bajo el último mínimo del banderín.\n"
+            "• Objetivo orientativo: M proyectada hacia arriba desde el punto de ruptura.\n" + _PATTERN_RISK,
+            "• No lo confundas con un triángulo simétrico: el banderín es pequeño y aparece justo después de un mástil.\n"
+            "• Si el precio llega al vértice sin romper, la figura pierde fuerza.\n"
+            "• Si una vela cierra por debajo de la línea inferior, se invalida.",
+        ),
+    },
+    "banderin_baj": {
+        "button": "Banderín bajista",
+        "title": "📐 Banderín bajista",
+        "visual": "fig_banderin_baj",
+        "text": _pattern_page(
+            "Continuación · sesgo bajista",
+            "Pausa tras un impulso bajista fuerte, con una consolidación que se comprime en un pequeño triángulo.",
+            "1. Mástil: impulso bajista fuerte con volumen alto.\n"
+            "2. Banderín: máximos decrecientes y mínimos crecientes que convergen, con volumen decreciente.\n"
+            "3. Es de corta duración; la ruptura suele producirse antes de llegar al vértice.",
+            "• Mide el mástil M.\n"
+            "• Traza las dos líneas convergentes del banderín (mínimo 2 toques en cada una).\n"
+            "• La línea inferior es la que debe romperse.",
+            "Una vela debe cerrar por debajo de la línea inferior del banderín, idealmente con más volumen.",
+            "• Entrada: al cierre de la vela de ruptura, o en el retest de la línea inferior rota.\n"
+            "• Stop Loss: sobre el último máximo del banderín.\n"
+            "• Objetivo orientativo: M proyectada hacia abajo desde el punto de ruptura.\n" + _PATTERN_RISK,
+            "• No lo confundas con un triángulo simétrico de mayor tamaño.\n"
+            "• Si el precio llega al vértice sin romper, la figura pierde fuerza.\n"
+            "• Si una vela cierra por encima de la línea superior, se invalida.",
+        ),
+    },
+    "tri_asc": {
+        "button": "Triángulo ascendente",
+        "title": "📐 Triángulo ascendente",
+        "visual": "fig_tri_asc",
+        "text": _pattern_page(
+            "Continuación · sesgo alcista",
+            "Los vendedores defienden un nivel fijo, pero los compradores aceptan precios cada vez más altos (mínimos crecientes). "
+            "La presión sobre la resistencia aumenta. Es un sesgo, no una certeza.",
+            "1. Resistencia horizontal con al menos 2 toques.\n"
+            "2. Mínimos cada vez más altos con al menos 2 toques.\n"
+            "3. El precio se comprime hacia el vértice con volumen decreciente.",
+            "• Línea horizontal sobre los máximos (puntos 1, 3, 5, 7).\n"
+            "• Línea ascendente bajo los mínimos crecientes (puntos 2, 4, 6).\n"
+            "• H: altura de la base, en la parte más ancha del triángulo.",
+            "Una vela debe cerrar por encima de la resistencia, con volumen creciente. "
+            "Como referencia, las rupturas más fiables ocurren antes de llegar al vértice (entre dos tercios y tres cuartos del triángulo).",
+            "• Entrada: al cierre de la vela de ruptura, o en el retest de la resistencia rota (ahora soporte).\n"
+            "• Stop Loss: bajo el último mínimo creciente (o bajo la línea ascendente).\n"
+            "• Objetivo orientativo: H proyectada hacia arriba desde la ruptura.\n" + _PATTERN_RISK,
+            "• Puede fallar: si una vela cierra por debajo de la línea ascendente, la figura se invalida.\n"
+            "• Rupturas con poco volumen o muy cerca del vértice son menos fiables.\n"
+            "• Entrar en la resistencia anticipando la ruptura, sin cierre, es un error común.",
+        ),
+    },
+    "tri_desc": {
+        "button": "Triángulo descendente",
+        "title": "📐 Triángulo descendente",
+        "visual": "fig_tri_desc",
+        "text": _pattern_page(
+            "Continuación · sesgo bajista",
+            "Los compradores defienden un nivel fijo, pero los vendedores aceptan precios cada vez más bajos (máximos decrecientes). "
+            "La presión sobre el soporte aumenta. Es un sesgo, no una certeza.",
+            "1. Soporte horizontal con al menos 2 toques.\n"
+            "2. Máximos cada vez más bajos con al menos 2 toques.\n"
+            "3. El precio se comprime hacia el vértice con volumen decreciente.",
+            "• Línea horizontal bajo los mínimos (puntos 1, 3, 5, 7).\n"
+            "• Línea descendente sobre los máximos decrecientes (puntos 2, 4, 6).\n"
+            "• H: altura de la base, en la parte más ancha del triángulo.",
+            "Una vela debe cerrar por debajo del soporte, con volumen creciente. "
+            "Como referencia, las rupturas más fiables ocurren antes de llegar al vértice.",
+            "• Entrada: al cierre de la vela de ruptura, o en el retest del soporte roto (ahora resistencia).\n"
+            "• Stop Loss: sobre el último máximo decreciente (o sobre la línea descendente).\n"
+            "• Objetivo orientativo: H proyectada hacia abajo desde la ruptura.\n" + _PATTERN_RISK,
+            "• Puede fallar: si una vela cierra por encima de la línea descendente, la figura se invalida.\n"
+            "• Rupturas con poco volumen o muy cerca del vértice son menos fiables.\n"
+            "• Cuidado con los barridos de liquidez bajo el soporte: espera el cierre.",
+        ),
+    },
+    "tri_sim": {
+        "button": "Triángulo simétrico",
+        "title": "📐 Triángulo simétrico",
+        "visual": "fig_tri_sim",
+        "text": _pattern_page(
+            "Bilateral · puede romper en cualquier dirección",
+            "Compradores y vendedores se equilibran: los máximos bajan y los mínimos suben. "
+            "Es una fase de indecisión que termina con una ruptura. Con frecuencia continúa la tendencia previa, pero no siempre.",
+            "1. Máximos decrecientes y mínimos crecientes: dos líneas que convergen.\n"
+            "2. Al menos 4 toques en total (2 por línea).\n"
+            "3. Volumen decreciente conforme se acerca al vértice.",
+            "• Línea superior sobre los máximos (1, 3, 5) y línea inferior bajo los mínimos (2, 4, 6).\n"
+            "• H: altura de la parte más ancha, al inicio del triángulo.",
+            "Una vela debe cerrar fuera de cualquiera de las dos líneas, con más volumen. "
+            "No se anticipa la dirección: se opera la ruptura confirmada.",
+            "• Entrada: al cierre de la vela de ruptura, o en el retest de la línea rota.\n"
+            "• Stop Loss: dentro del triángulo, tras el último mínimo (ruptura alcista) o el último máximo (ruptura bajista).\n"
+            "• Objetivo orientativo: H proyectada en el sentido de la ruptura.\n" + _PATTERN_RISK,
+            "• Apostar por una dirección antes de la ruptura.\n"
+            "• Si el precio llega al vértice sin romper, la figura pierde fuerza.\n"
+            "• Los falsos rompimientos son habituales: espera el cierre.",
+        ),
+    },
+    "rectangulo": {
+        "button": "Rectángulo",
+        "title": "📐 Rectángulo (rango lateral)",
+        "visual": "fig_rectangulo",
+        "text": _pattern_page(
+            "Bilateral · pausa entre un soporte y una resistencia horizontales",
+            "El precio oscila entre dos niveles claros mientras el mercado decide. Suele continuar en la dirección "
+            "de la tendencia previa, pero puede romper en cualquier sentido.",
+            "1. Resistencia horizontal con al menos 2 toques.\n"
+            "2. Soporte horizontal con al menos 2 toques.\n"
+            "3. Volumen decreciente dentro del rango.",
+            "• Línea horizontal sobre los máximos (1, 3, 5, 7) y línea horizontal bajo los mínimos (2, 4, 6).\n"
+            "• H: altura del rango (distancia entre ambas líneas).",
+            "Una vela debe cerrar fuera del rango, con más volumen. En los extremos son frecuentes los barridos de liquidez: "
+            "el cierre de vela ayuda a distinguir una ruptura real de un barrido.",
+            "• Entrada: al cierre de la vela de ruptura, o en el retest del nivel roto.\n"
+            "• Stop Loss: bajo el último mínimo interno o la mitad del rango (el otro extremo es más conservador pero implica más riesgo).\n"
+            "• Objetivo orientativo: H proyectada en el sentido de la ruptura.\n" + _PATTERN_RISK,
+            "• Operar los extremos del rango sin ruptura confirmada.\n"
+            "• Rupturas sin cierre fuera del rango suelen ser barridos de liquidez.\n"
+            "• Si rompe a la baja con cierre, el escenario es el espejo: objetivo H hacia abajo.",
+        ),
+    },
+    "cuna_asc": {
+        "button": "Cuña ascendente",
+        "title": "📐 Cuña ascendente",
+        "visual": "fig_cuna_asc",
+        "text": _pattern_page(
+            "Sesgo bajista · reversión o continuación según el contexto",
+            "Máximos y mínimos suben, pero cada vez con menos recorrido: los compradores avanzan con esfuerzo creciente. "
+            "El sesgo es SIEMPRE bajista.",
+            "1. Dos líneas ascendentes que convergen; la inferior sube más que la superior.\n"
+            "2. Al menos 2 toques en cada línea, con volumen decreciente.\n"
+            "3. Contexto: tras una tendencia alcista suele ser reversión bajista; dentro de una tendencia bajista (rebote correctivo) suele ser continuación bajista.",
+            "• Línea superior sobre los máximos y línea inferior bajo los mínimos.\n"
+            "• Marca el inicio de la cuña: la zona donde empezó a formarse.",
+            "Una vela debe cerrar por debajo de la línea inferior, idealmente con más volumen.",
+            "• Entrada: al cierre de la vela de ruptura. A menudo no hay reentrada clara porque el precio cae rápido.\n"
+            "• Stop Loss: sobre el último máximo de la cuña.\n"
+            "• Objetivo orientativo: el inicio de la cuña.\n" + _PATTERN_RISK,
+            "• Confundirla con un canal alcista: en la cuña las líneas convergen.\n"
+            "• Si una vela cierra por encima de la línea superior, la figura se invalida.\n"
+            "• Regla clave: cuña ascendente = sesgo bajista, también en tendencia bajista.",
+        ),
+    },
+    "cuna_desc": {
+        "button": "Cuña descendente",
+        "title": "📐 Cuña descendente",
+        "visual": "fig_cuna_desc",
+        "text": _pattern_page(
+            "Sesgo alcista · reversión o continuación según el contexto",
+            "Máximos y mínimos bajan, pero cada vez con menos recorrido: los vendedores avanzan con esfuerzo creciente. "
+            "El sesgo es SIEMPRE alcista.",
+            "1. Dos líneas descendentes que convergen; la superior baja más que la inferior.\n"
+            "2. Al menos 2 toques en cada línea, con volumen decreciente.\n"
+            "3. Contexto: tras una tendencia bajista suele ser reversión alcista; dentro de una tendencia alcista (retroceso correctivo) suele ser continuación alcista.",
+            "• Línea superior sobre los máximos y línea inferior bajo los mínimos.\n"
+            "• Marca el inicio de la cuña: la zona donde empezó a formarse.",
+            "Una vela debe cerrar por encima de la línea superior, idealmente con más volumen.",
+            "• Entrada: al cierre de la vela de ruptura. A menudo no hay reentrada clara porque el precio sube rápido.\n"
+            "• Stop Loss: bajo el último mínimo de la cuña.\n"
+            "• Objetivo orientativo: el inicio de la cuña.\n" + _PATTERN_RISK,
+            "• Confundirla con un canal bajista: en la cuña las líneas convergen.\n"
+            "• Si una vela cierra por debajo de la línea inferior, la figura se invalida.\n"
+            "• Regla clave: cuña descendente = sesgo alcista, también en tendencia alcista.",
+        ),
+    },
+}
+
+CHART_PATTERNS_INTRO = (
+    "Las figuras chartistas son formaciones que dibuja el precio y que reflejan la psicología de compradores "
+    "y vendedores. Ayudan a identificar posibles continuaciones o cambios de tendencia, siempre como contexto "
+    "y nunca como señal aislada.\n\n"
+
+    "🗂️ <b>Categorías</b>\n"
+    "🔄 Reversión: Hombro-Cabeza-Hombro (y su invertido), doble y triple techo/suelo.\n"
+    "➡️ Continuación: banderas, banderines y triángulos ascendente y descendente.\n"
+    "↔️ Bilaterales: triángulo simétrico y rectángulo (pueden romper a cualquier lado).\n"
+    "📐 Cuñas: la ascendente tiene sesgo bajista y la descendente sesgo alcista.\n\n"
+
+    "✏️ <b>Método para cualquier figura</b>\n"
+    "1. Identifica la tendencia previa y la temporalidad.\n"
+    "2. Localiza los puntos mínimos que exige la figura.\n"
+    "3. Traza las líneas (cuello, soporte, resistencia, canal) y mide su altura.\n"
+    "4. Espera la ruptura con CIERRE de vela, idealmente con más volumen.\n"
+    "5. Define Stop Loss y objetivo antes de entrar; la reentrada (retest) es una opción.\n"
+    "6. Descarta la figura si el precio la invalida.\n\n"
+
+    "⚠️ <b>Reglas de oro</b>\n"
+    "• No se opera la figura al formarse, sino su ruptura confirmada.\n"
+    "• Una mecha que perfora la línea no es una ruptura.\n"
+    "• Los falsos rompimientos y barridos de liquidez existen: el contexto (estructura, liquidez, zonas) pesa tanto como la figura.\n"
+    "• Ninguna figura garantiza resultados; úsalas con gestión de riesgo.\n\n"
+
+    "Elige una figura para ver su detalle, cómo marcarla y operarla, con su imagen en velas japonesas."
+)
+
+
 ACADEMY_MODULES = {
     "m1": {
         "title": "📘 Módulo 1 — Fundamentos del Trading",
@@ -3297,6 +3754,13 @@ ACADEMY_MODULES = {
             "de buscar una posible entrada."
         ),
         "visual": "candles",
+    },
+
+    "m2b": {
+        "title": "📐 Módulo 2B — Figuras Chartistas",
+        "text": CHART_PATTERNS_INTRO,
+        "visual": "fig_resumen",
+        "figure_pages": CHART_PATTERN_ORDER,
     },
 
     "m3": {
@@ -3724,6 +4188,12 @@ def academy_menu():
         ],
         [
             InlineKeyboardButton(
+                "📐 Figuras Chartistas",
+                callback_data="academy_m2b"
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 "📰 Fundamental",
                 callback_data="academy_m3"
             ),
@@ -3791,6 +4261,7 @@ async def show_academy(query):
         "Aprende progresivamente:\n"
         "📘 Fundamentos\n"
         "📊 Análisis Técnico\n"
+        "📐 Figuras Chartistas\n"
         "📰 Análisis Fundamental\n"
         "🏦 Análisis Institucional\n"
         "🧩 Estructura de Mercado\n"
@@ -3802,7 +4273,7 @@ async def show_academy(query):
         "🔬 Construcción de Análisis\n"
         "🚀 Aplicación Avanzada\n\n"
         
-        "📖 <b>12 módulos educativos</b>\n\n"
+        "📖 <b>13 módulos educativos</b>\n\n"
         
         "Selecciona un módulo para comenzar o continuar tu aprendizaje.\n\n"
         
@@ -3828,6 +4299,10 @@ async def show_academy_module(query, module_id):
     module = ACADEMY_MODULES.get(base_id)
     if not module or (page == 2 and not module.get("page2")):
         await show_academy(query)
+        return
+
+    if module.get("figure_pages"):
+        await show_chart_patterns_index(query)
         return
 
     keyboard = []
@@ -3900,6 +4375,114 @@ async def show_academy_visual(query, kind):
     finally:
         if fig is not None:
             plt.close(fig)
+
+
+# ------------------------------------------------------------
+# Módulo 2B — Figuras Chartistas (índice, páginas y publicación)
+# ------------------------------------------------------------
+
+CHART_PATTERN_DISCLAIMER = (
+    "⚠️ <b>Contenido educativo:</b> las figuras no garantizan resultados; "
+    "los ejemplos son ilustrativos y no constituyen una recomendación de operación."
+)
+
+
+async def show_chart_patterns_index(query):
+    module = ACADEMY_MODULES["m2b"]
+    keyboard = []
+    if module.get("visual") in ACADEMY_VISUAL_BUILDERS:
+        keyboard.append([InlineKeyboardButton("🖼️ Resumen visual de figuras", callback_data=f"academy_visual_{module['visual']}")])
+    for group_title, ids in CHART_PATTERN_GROUPS:
+        keyboard.append([InlineKeyboardButton(f"— {group_title} —", callback_data="academy_figs_noop")])
+        row = []
+        for pid in ids:
+            row.append(InlineKeyboardButton(CHART_PATTERNS[pid]["button"], callback_data=f"academy_fig_{pid}"))
+            if len(row) == 2:
+                keyboard.append(row)
+                row = []
+        if row:
+            keyboard.append(row)
+    keyboard.extend([
+        [InlineKeyboardButton("▶️ Empezar por la primera figura", callback_data=f"academy_fig_{CHART_PATTERN_ORDER[0]}")],
+        [InlineKeyboardButton("🎓 Academia", callback_data="academy")],
+        [InlineKeyboardButton("🏠 Menú principal", callback_data="back_main")],
+    ])
+    text = f"{module['title']}\n\n{module['text']}\n\n{CHART_PATTERN_DISCLAIMER}"
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+async def show_chart_pattern(query, pattern_id):
+    pattern = CHART_PATTERNS.get(pattern_id)
+    if not pattern:
+        await show_chart_patterns_index(query)
+        return
+    index = CHART_PATTERN_ORDER.index(pattern_id)
+    keyboard = []
+    if pattern["visual"] in ACADEMY_VISUAL_BUILDERS:
+        keyboard.append([InlineKeyboardButton("🖼️ Ver figura con velas", callback_data=f"academy_visual_{pattern['visual']}")])
+    nav = []
+    if index > 0:
+        nav.append(InlineKeyboardButton("⬅️ Anterior", callback_data=f"academy_fig_{CHART_PATTERN_ORDER[index - 1]}"))
+    if index < len(CHART_PATTERN_ORDER) - 1:
+        nav.append(InlineKeyboardButton("Siguiente ➡️", callback_data=f"academy_fig_{CHART_PATTERN_ORDER[index + 1]}"))
+    else:
+        nav.append(InlineKeyboardButton("📰 Siguiente módulo", callback_data="academy_m3"))
+    keyboard.append(nav)
+    keyboard.extend([
+        [InlineKeyboardButton("📐 Índice de figuras", callback_data="academy_m2b")],
+        [InlineKeyboardButton("🎓 Academia", callback_data="academy")],
+    ])
+    text = (
+        f"{pattern['title']}\n"
+        f"<i>Figura {index + 1} de {len(CHART_PATTERN_ORDER)}</i>\n\n"
+        f"{pattern['text']}\n\n"
+        f"{CHART_PATTERN_DISCLAIMER}"
+    )
+    await query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
+
+
+def academy_visual_png(kind):
+    """Genera el PNG de un material visual de la Academia (para publicarlo en el Canal)."""
+    builder = ACADEMY_VISUAL_BUILDERS.get(kind)
+    if builder is None:
+        return None
+    fig = None
+    try:
+        fig = builder()
+        image = io.BytesIO()
+        fig.savefig(image, format="png", dpi=100, facecolor=fig.get_facecolor(), bbox_inches=None)
+        image.seek(0)
+        image.name = f"apex_quant_{kind}.png"
+        return image
+    finally:
+        if fig is not None:
+            plt.close(fig)
+
+
+_ACADEMY_PUBLISH_TASKS = set()
+
+
+async def _publish_chart_patterns_channel(context, channel_id):
+    """Publica el módulo 2B completo en el Canal, poco a poco para respetar los límites de Telegram."""
+    async def send_text(text):
+        await context.bot.send_message(chat_id=channel_id, text=text, parse_mode="HTML")
+        await asyncio.sleep(3.5)
+
+    async def send_image(kind):
+        image = academy_visual_png(kind)
+        if image is None:
+            return
+        await context.bot.send_photo(chat_id=channel_id, photo=image, caption=ACADEMY_VISUAL_CAPTIONS.get(kind, ""))
+        await asyncio.sleep(3.5)
+
+    module = ACADEMY_MODULES["m2b"]
+    await send_text(f"🎓 <b>{module['title']}</b>\n\n{module['text']}")
+    await send_image(module["visual"])
+    for pid in CHART_PATTERN_ORDER:
+        pattern = CHART_PATTERNS[pid]
+        await send_text(f"🎓 <b>{pattern['title']}</b>\n\n{pattern['text']}")
+        await send_image(pattern["visual"])
+    await send_text(CHART_PATTERN_DISCLAIMER)
 
 
 # ============================================================
@@ -4008,6 +4591,17 @@ async def admin_academy_menu(query):
 async def publish_academy_module(context, module_id):
     channel_id=get_community_channel_id(); module=ACADEMY_MODULES.get(module_id)
     if not channel_id or not module: return False
+    if module.get("figure_pages"):
+        # Módulo con muchas páginas e imágenes: se publica en segundo plano, con pausas.
+        async def _run():
+            try:
+                await _publish_chart_patterns_channel(context, channel_id)
+            except Exception as error:
+                logger.error("Error publicando Figuras Chartistas en el Canal: %s", error, exc_info=True)
+        task=asyncio.create_task(_run())
+        _ACADEMY_PUBLISH_TASKS.add(task)
+        task.add_done_callback(_ACADEMY_PUBLISH_TASKS.discard)
+        register_community_post(); return True
     # Contenido a publicar: página principal y, si existe, la página 2.
     pages=[module]
     if module.get("page2"): pages.append(module["page2"])
@@ -7063,7 +7657,7 @@ MISIÓN
 
 APEXQUANT
 ApexQuant es un ecosistema de información, educación y herramientas relacionadas
-con mercados financieros. La Academia cubre desde fundamentos hasta estructura,
+con mercados financieros. La Academia cubre desde fundamentos hasta figuras chartistas, estructura,
 liquidez, BOS, CHOCH, FVG, Order Blocks, Premium/Discount, análisis
 multitemporal y flujo de análisis.
 El calendario económico utiliza FinanceCalendar y puede complementarse con web.
@@ -7182,6 +7776,32 @@ Stop Loss, resultados, comisiones o expectativas del CopyTrading, responde confo
 términos. Si algo no está cubierto, dilo y recomienda revisar OneRoyal o contactar al manager
 de ApexQuant. Indica que pueden leer el texto completo en CopyTrading → «TÉRMINOS Y
 CONDICIONES».
+
+FIGURAS CHARTISTAS (Academia → «Figuras Chartistas», entre Técnico y Fundamental)
+Responde con estas reglas exactas y no inventes variantes:
+- Reversión: Hombro-Cabeza-Hombro (fin de tendencia alcista) y su invertido (fin de tendencia
+  bajista); doble techo/suelo; triple techo/suelo.
+- Continuación: banderas, banderines, triángulo ascendente (sesgo alcista) y descendente (sesgo bajista).
+- Bilaterales (pueden romper hacia cualquier lado): triángulo simétrico y rectángulo.
+- Cuñas: la cuña ASCENDENTE tiene siempre sesgo BAJISTA (reversión si aparece tras una tendencia
+  alcista; continuación bajista si es un rebote dentro de una tendencia bajista). La cuña DESCENDENTE
+  tiene siempre sesgo ALCISTA (reversión si aparece tras una tendencia bajista; continuación alcista si
+  es un retroceso dentro de una tendencia alcista). Nunca digas que una cuña ascendente en tendencia
+  bajista es reversión bajista, ni que una cuña descendente en tendencia alcista es reversión bajista.
+- Ninguna figura se opera al formarse: se espera la ruptura con cierre de vela (idealmente con más
+  volumen). Una mecha que perfora la línea no confirma. Hay falsos rompimientos y barridos de
+  liquidez. La reentrada (retest) de la línea rota es una opción.
+- Línea de cuello: en HCH une los dos mínimos intermedios; en doble techo es el mínimo entre los dos
+  techos; en doble suelo, el máximo entre los dos suelos. La figura se confirma al romper esa línea,
+  no al formarse.
+- Objetivos orientativos: H (altura de la figura) proyectada desde la ruptura en HCH, dobles, triples,
+  triángulos y rectángulo; en banderas y banderines, el largo del mástil proyectado desde la ruptura;
+  en cuñas, el inicio de la cuña. Stop Loss: al otro lado de la última estructura de la figura
+  (por ejemplo, sobre el hombro derecho o sobre el segundo techo).
+- El triple techo/suelo implica más pruebas del nivel, pero no es garantía de mayor fiabilidad.
+- Las figuras son contexto, no señales: combínalas con estructura, liquidez, zonas y gestión de riesgo.
+  Ninguna figura garantiza resultados.
+- Para ver el detalle y las imágenes en velas japonesas, indica Academia → Figuras Chartistas.
 
 TRADING Y PROYECCIONES
 Si preguntan si un activo subirá/bajará, por una entrada, compra/venta, señal o
@@ -8096,6 +8716,12 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             return
         if data == "academy":
             await show_academy(query)
+            return
+        if data == "academy_figs_noop":
+            await query.answer()
+            return
+        if data.startswith("academy_fig_"):
+            await show_chart_pattern(query, data.replace("academy_fig_", "", 1))
             return
         if data.startswith("academy_m"):
             await show_academy_module(query, data.replace("academy_", "", 1))
