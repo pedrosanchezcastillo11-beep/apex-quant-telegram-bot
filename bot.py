@@ -5361,9 +5361,10 @@ async def community_high_impact_monitor(application):
 # Metodología (H4 → H1 → M5):
 #   H4  : dirección/tendencia (estructura HH/HL o LH/LL + EMA 50).
 #   H1  : zonas de liquidez (máximos/mínimos, equal highs/lows), imbalances (FVG)
-#         y order blocks (OB); además rangos laterales y canales.
-#   M5  : entrada/POI. Barrido de liquidez dentro de una zona H1, cierre de vela a
-#         favor (recuperación del nivel) y vela de confirmación a favor de H4.
+#         y order blocks (OB); además rangos laterales, canales y figuras chartistas.
+#   H1  : detección de figuras chartistas confirmadas (triángulos, dobles techos/suelos,
+#         HCH/inverso y banderas); son confluencias, no requisitos obligatorios.
+#   M5  : Fase 2 / ejecución. Barrido, recuperación y confirmación a favor de H4.
 #   S/R : en rangos o canales, ruptura → cierre de vela (ruptura real o barrido)
 #         → vela de continuación.
 # Son ALERTAS informativas: no son señales ni recomendaciones de entrada.
@@ -5372,9 +5373,10 @@ async def community_high_impact_monitor(application):
 #   • FVG no amplio  → referencia = 50% del FVG (el barrido debe haberlo alcanzado).
 #   • FVG amplio     → referencia = order block bajo el FVG (sobre él en cortos).
 #   • Varios FVG     → se toma el más alejado como referencia.
-#   • Filtros: zona fresca, cambio de estructura M5 a favor de H4, precio en
-#     descuento/premium del rango H4, riesgo máximo hasta la invalidación, sin
-#     noticia de alto impacto inminente y una alerta por zona (enfriamiento).
+#   • Fase 1: configuración pendiente H4/H1 con zona fresca y riesgo/beneficio válido.
+#   • Fase 2: confirmación M5; CHoCH suma calidad, pero no es obligatorio si hay
+#     barrido, recuperación y vela de confirmación válidos. Premium/discount se mide
+#     sobre el precio de entrada proyectado. Alertas de fase 2 pueden seguir a fase 1.
 #   • Fase 2: ventana de sesión por tipo de activo, relación riesgo/beneficio mínima
 #     hasta la siguiente liquidez de H1 y nota de calidad A/B/C (sólo se envían A y B).
 
@@ -5392,9 +5394,9 @@ TD_DAILY_BUDGET = _env_num("TWELVEDATA_DAILY_BUDGET", 740, int)      # plan grat
 TD_PER_MINUTE = _env_num("TWELVEDATA_PER_MINUTE", 7, int)            # plan gratis: 8/min
 
 TECH_MIN_SCORE = _env_num("TECH_MIN_SCORE", 2, int)                  # confluencias extra mínimas
-TECH_COOLDOWN_MINUTES = _env_num("TECH_COOLDOWN_MINUTES", 45, int)
-TECH_MAX_PER_SYMBOL_DAY = _env_num("TECH_MAX_PER_SYMBOL_DAY", 3, int)
-TECH_MAX_PER_DAY = _env_num("TECH_MAX_PER_DAY", 10, int)
+TECH_COOLDOWN_MINUTES = _env_num("TECH_COOLDOWN_MINUTES", 25, int)
+TECH_MAX_PER_SYMBOL_DAY = _env_num("TECH_MAX_PER_SYMBOL_DAY", 4, int)
+TECH_MAX_PER_DAY = _env_num("TECH_MAX_PER_DAY", 16, int)
 TECH_ACTIVE_START_UTC = _env_num("TECH_ACTIVE_START_UTC", 6, int)    # Londres
 TECH_ACTIVE_END_UTC = _env_num("TECH_ACTIVE_END_UTC", 21, int)       # cierre de Nueva York
 TECH_SWEEP_LOOKBACK = 18        # velas M5 (~90 min) en las que se busca el barrido
@@ -5408,12 +5410,15 @@ TECH_FVG_FARTHEST = _env_flag("TECH_FVG_FARTHEST", True)              # varios F
 TECH_MAX_RISK_ATR = _env_num("TECH_MAX_RISK_ATR", 1.5, float)        # máx. distancia entrada→invalidación (× ATR H1)
 TECH_REQUIRE_FRESH = _env_flag("TECH_REQUIRE_FRESH", True)            # sólo zonas H1 no visitadas antes
 TECH_REQUIRE_PD = _env_flag("TECH_REQUIRE_PD", True)                  # descuento (largos) / premium (cortos) del rango H4
-TECH_REQUIRE_CHOCH = _env_flag("TECH_REQUIRE_CHOCH", True)            # la vela de confirmación rompe la estructura M5
+TECH_REQUIRE_CHOCH = _env_flag("TECH_REQUIRE_CHOCH", False)            # la vela de confirmación rompe la estructura M5
 TECH_ALLOW_LIQ_ZONES = _env_flag("TECH_ALLOW_LIQ_ZONES", False)       # permitir liquidez H1 sola (sin OB/FVG)
 TECH_H4_REQUIRED = _env_flag("TECH_H4_REQUIRED", True)                # sin dirección en H4 no hay alertas (rangos/canales incluidos)
 TECH_NEWS_BLOCK_MINUTES = _env_num("TECH_NEWS_BLOCK_MINUTES", 15, int)  # no alertar a ± estos min de una noticia roja
 TECH_ZONE_COOLDOWN_HOURS = _env_num("TECH_ZONE_COOLDOWN_HOURS", 6, float)  # una alerta por zona cada X horas
-TECH_TRACK_HOURS = _env_num("TECH_TRACK_HOURS", 24, int)              # horas de seguimiento de cada alerta
+TECH_TRACK_HOURS = _env_num("TECH_TRACK_HOURS", 24, int)
+TECH_PENDING_HOURS = _env_num("TECH_PENDING_HOURS", 24, int)
+TECH_PENDING_MAX_DISTANCE_ATR = _env_num("TECH_PENDING_MAX_DISTANCE_ATR", 3.0, float)
+TECH_PENDING_MIN_SCORE = _env_num("TECH_PENDING_MIN_SCORE", 2, int)              # horas de seguimiento de cada alerta
 
 # --- Fase 2: sesiones, relación riesgo/beneficio y calidad A/B/C ---
 
@@ -5533,6 +5538,7 @@ def tech_state_load():
     data.setdefault("history", [])
     data.setdefault("zones_sent", {})  # última alerta por zona (una alerta por zona)
     data.setdefault("track", [])       # seguimiento de resultados de las alertas
+    data.setdefault("pending", [])    # configuraciones H4/H1 publicadas, esperando confirmación M5
     data.setdefault("stats", {})       # resultados acumulados por activo
     data.setdefault("stats_grade", {})  # resultados acumulados por calidad (A/B/C)
     data["disabled"] = {}  # al reiniciar/desplegar se reintentan los activos pausados por error de símbolo
@@ -6736,7 +6742,7 @@ def build_tech_alert(name, cfg, setup, bias, price, ref_liquidity, news_lines, n
     h4_text = bias.get("label") or "Neutral / rango"
 
     if setup["type"] == "smc":
-        title = "ALERTA TÉCNICA · BARRIDO DE LIQUIDEZ EN ZONA H1"
+        title = "FASE 2 · ENTRADA CONFIRMADA EN ZONA H1" if setup.get("phase") == 2 else "ALERTA TÉCNICA · BARRIDO DE LIQUIDEZ EN ZONA H1"
         what_swept = "mínimos" if bull else "máximos"
         lines = [
             f"🔔 <b>{title}</b>",
@@ -6747,7 +6753,7 @@ def build_tech_alert(name, cfg, setup, bias, price, ref_liquidity, news_lines, n
             f"📊 <b>H4 (dirección):</b> {escape(h4_text)}",
             f"💧 <b>H1 (zona):</b> {escape(tech_zone_text(setup['zone'], fmt))}",
             "",
-            "⚡ <b>M5 (entrada/POI):</b>",
+            "⚡ <b>M5 (confirmación de entrada):</b>",
             f"✅ Barrido de liquidez de {what_swept} en {fmt(setup['extreme'])} "
             f"(nivel barrido: {fmt(setup['level'])})",
             "✅ Cierre de vela a favor recuperando el nivel",
@@ -6802,6 +6808,8 @@ def build_tech_alert(name, cfg, setup, bias, price, ref_liquidity, news_lines, n
         extras.append("sesión de alta liquidez" + (f" ({setup['session_label']})" if setup.get("session_label") else ""))
     if setup.get("quality_ok"):
         extras.append("rango/canal bien definido (≥6 toques)")
+    if setup.get("patterns"):
+        extras.append("figura(s) H1: " + ", ".join(p.get("name", "") for p in setup["patterns"]))
 
     lines.append("")
     lines.append(f"🎯 <b>Confluencias:</b> {setup['score']}/{setup['score_max']}")
@@ -6869,7 +6877,7 @@ def build_tech_alert(name, cfg, setup, bias, price, ref_liquidity, news_lines, n
 # Control de envío (duplicados, enfriamiento y topes diarios)
 # ------------------------------------------------------------
 
-def tech_can_send(name, key, now):
+def tech_can_send(name, key, now, bypass_cooldown=False):
     _tech_roll_day()
 
     if key in TECH_STATE["sent"]:
@@ -6877,7 +6885,7 @@ def tech_can_send(name, key, now):
 
     last = TECH_STATE["last_alert"].get(name)
 
-    if last:
+    if last and not bypass_cooldown:
         try:
             elapsed = (now - datetime.fromisoformat(last)).total_seconds() / 60
             if elapsed < TECH_COOLDOWN_MINUTES:
@@ -7223,12 +7231,12 @@ def tech_score_smc(cfg, setup, bias, price, now):
 
     setup["zone_conf"] = bool(zone.get("conf"))  # solape real entre OB/FVG y liquidez
     setup["session_ok"] = tech_session_bonus(cfg, now)
-    setup["pd_ok"] = False
-
     rng = bias.get("range")
+    entry_ref = (setup.get("ref") or {}).get("entry", price)
+    setup["pd_ok"] = False
     if rng and rng[1] > rng[0]:
         eq = (rng[0] + rng[1]) / 2
-        setup["pd_ok"] = price <= eq if setup["dir"] == "bull" else price >= eq
+        setup["pd_ok"] = entry_ref <= eq if setup["dir"] == "bull" else entry_ref >= eq
 
     for flag in (setup["zone_conf"], setup["session_ok"], setup["pd_ok"], setup.get("choch")):
         parts += 1 if flag else 0
@@ -7266,6 +7274,312 @@ def tech_score_break(cfg, setup, bias, channel, c5, now):
     setup["channel_kind"] = channel["kind"]
     setup["u_now"], setup["l_now"] = channel["u_now"], channel["l_now"]
     return parts
+
+
+def tech_detect_chart_patterns_h1(c1, atr=None):
+    """Detecta patrones H1 confirmados usando pivotes y cierres de vela.
+
+    No etiqueta una figura sólo por parecido visual: exige geometría razonable y
+    ruptura por cierre. El patrón es una confluencia, nunca un requisito único.
+    """
+    if len(c1) < 35:
+        return []
+    atr = atr or tech_atr(c1)
+    if not atr:
+        return []
+    highs, lows = tech_find_swings(c1, 2, 2)
+    out = []
+    last = c1[-1]
+    tol = 0.30 * atr
+
+    def add(name, direction, level, reason):
+        if direction == "bull" and last["c"] > level + 0.08 * atr:
+            out.append({"name": name, "dir": direction, "level": level, "reason": reason})
+        elif direction == "bear" and last["c"] < level - 0.08 * atr:
+            out.append({"name": name, "dir": direction, "level": level, "reason": reason})
+
+    hs = highs[-5:]
+    ls = lows[-5:]
+    # Triángulos: tres contactos en la directriz y dos o más en el lado horizontal.
+    if len(hs) >= 3 and len(ls) >= 2:
+        h3 = [v for _, v in hs[-3:]]
+        l2 = [v for _, v in ls[-2:]]
+        if max(h3) - min(h3) <= 0.65 * atr and l2[-1] > l2[0] + 0.12 * atr:
+            add("Triángulo ascendente", "bull", sum(h3) / 3, "compresión con techo horizontal y ruptura")
+        if max(l2) - min(l2) <= 0.65 * atr and h3[-1] < h3[0] - 0.12 * atr:
+            add("Triángulo descendente", "bear", sum(l2) / 2, "compresión con suelo horizontal y ruptura")
+        # Triángulo simétrico: exige cierre fuera de ambas directrices proyectadas.
+        if h3[-1] < h3[0] - 0.15 * atr and l2[-1] > l2[0] + 0.15 * atr:
+            upper_slope = (hs[-1][1] - hs[-3][1]) / max(1, hs[-1][0] - hs[-3][0])
+            lower_slope = (ls[-1][1] - ls[-2][1]) / max(1, ls[-1][0] - ls[-2][0])
+            upper_now = hs[-1][1] + upper_slope * (len(c1) - 1 - hs[-1][0])
+            lower_now = ls[-1][1] + lower_slope * (len(c1) - 1 - ls[-1][0])
+            if last["c"] > upper_now + 0.08 * atr:
+                out.append({"name": "Triángulo simétrico", "dir": "bull", "level": upper_now, "reason": "ruptura superior de compresión"})
+            elif last["c"] < lower_now - 0.08 * atr:
+                out.append({"name": "Triángulo simétrico", "dir": "bear", "level": lower_now, "reason": "ruptura inferior de compresión"})
+
+    # Doble techo/suelo con ruptura de neckline.
+    if len(hs) >= 2 and len(ls) >= 2:
+        (h1i, h1), (h2i, h2) = hs[-2:]
+        between_lows = [(i, v) for i, v in ls if h1i < i < h2i]
+        if abs(h1 - h2) <= tol and between_lows:
+            neckline = min(v for _, v in between_lows)
+            add("Doble techo", "bear", neckline, "dos máximos similares y ruptura de neckline")
+        (l1i, l1), (l2i, l2) = ls[-2:]
+        between_highs = [(i, v) for i, v in hs if l1i < i < l2i]
+        if abs(l1 - l2) <= tol and between_highs:
+            neckline = max(v for _, v in between_highs)
+            add("Doble suelo", "bull", neckline, "dos mínimos similares y ruptura de neckline")
+
+    # Hombro-cabeza-hombro e inverso: tres pivotes y hombros comparables.
+    if len(hs) >= 3:
+        (a_i, a), (b_i, b), (c_i, c) = hs[-3:]
+        between1 = [v for i, v in ls if a_i < i < b_i]
+        between2 = [v for i, v in ls if b_i < i < c_i]
+        if between1 and between2 and b > max(a, c) + 0.20 * atr and abs(a-c) <= 0.45 * atr:
+            neckline = (min(between1) + min(between2)) / 2
+            add("Hombro-cabeza-hombro", "bear", neckline, "cabeza superior y ruptura de neckline")
+    if len(ls) >= 3:
+        (a_i, a), (b_i, b), (c_i, c) = ls[-3:]
+        between1 = [v for i, v in hs if a_i < i < b_i]
+        between2 = [v for i, v in hs if b_i < i < c_i]
+        if between1 and between2 and b < min(a, c) - 0.20 * atr and abs(a-c) <= 0.45 * atr:
+            neckline = (max(between1) + max(between2)) / 2
+            add("HCH invertido", "bull", neckline, "cabeza inferior y ruptura de neckline")
+
+    # Banderas: impulso previo claro, consolidación estrecha y ruptura confirmada.
+    if len(c1) >= 24:
+        impulse = c1[-20:-8]
+        pole = impulse[-1]["c"] - impulse[0]["o"]
+        cons = c1[-8:-1]
+        crange = max(x["h"] for x in cons) - min(x["l"] for x in cons)
+        if abs(pole) >= 2.0 * atr and crange <= 1.8 * abs(pole):
+            upper, lower = max(x["h"] for x in cons), min(x["l"] for x in cons)
+            if pole > 0 and last["c"] > upper + 0.05 * atr:
+                out.append({"name": "Bandera alcista", "dir": "bull", "level": upper, "reason": "continuación tras impulso y consolidación"})
+            elif pole < 0 and last["c"] < lower - 0.05 * atr:
+                out.append({"name": "Bandera bajista", "dir": "bear", "level": lower, "reason": "continuación tras impulso y consolidación"})
+
+    # Triple techo/suelo: tres pivotes de precio comparable y ruptura del cuello.
+    if len(hs) >= 3:
+        last3 = hs[-3:]
+        vals = [v for _, v in last3]
+        neck = [v for i, v in ls if last3[0][0] < i < last3[-1][0]]
+        if len(neck) >= 2 and max(vals) - min(vals) <= 0.45 * atr:
+            add("Triple techo", "bear", min(neck), "tres máximos similares y ruptura del soporte intermedio")
+    if len(ls) >= 3:
+        last3 = ls[-3:]
+        vals = [v for _, v in last3]
+        neck = [v for i, v in hs if last3[0][0] < i < last3[-1][0]]
+        if len(neck) >= 2 and max(vals) - min(vals) <= 0.45 * atr:
+            add("Triple suelo", "bull", max(neck), "tres mínimos similares y ruptura de resistencia intermedia")
+
+    # Rectángulo: consolidación con al menos dos contactos arriba/abajo y ruptura por cierre.
+    if len(c1) >= 14:
+        box = c1[-13:-1]
+        top, bottom = max(x["h"] for x in box), min(x["l"] for x in box)
+        width = top - bottom
+        top_touches = sum(1 for x in box if abs(x["h"] - top) <= 0.18 * atr)
+        bot_touches = sum(1 for x in box if abs(x["l"] - bottom) <= 0.18 * atr)
+        if 0.6 * atr <= width <= 4.0 * atr and top_touches >= 2 and bot_touches >= 2:
+            add("Rectángulo", "bull", top, "rango lateral con ruptura superior")
+            add("Rectángulo", "bear", bottom, "rango lateral con ruptura inferior")
+
+    # Banderín: impulso previo y compresión triangular de rango corto.
+    if len(c1) >= 24:
+        pole_candles = c1[-22:-10]
+        pennant = c1[-10:-1]
+        pole = pole_candles[-1]["c"] - pole_candles[0]["o"]
+        ph, pl = tech_find_swings(pennant, 1, 1)
+        if abs(pole) >= 2.0 * atr and len(ph) >= 2 and len(pl) >= 2:
+            descending_highs = ph[-1][1] < ph[0][1]
+            ascending_lows = pl[-1][1] > pl[0][1]
+            if descending_highs and ascending_lows:
+                upper, lower = max(x["h"] for x in pennant), min(x["l"] for x in pennant)
+                if pole > 0:
+                    add("Banderín alcista", "bull", upper, "impulso alcista y compresión triangular")
+                else:
+                    add("Banderín bajista", "bear", lower, "impulso bajista y compresión triangular")
+
+    # Cuñas: directrices convergentes; la ruptura contraria a la pendiente aporta la señal.
+    if len(hs) >= 3 and len(ls) >= 3:
+        h3, l3 = hs[-3:], ls[-3:]
+        h_slope = (h3[-1][1] - h3[0][1]) / max(1, h3[-1][0] - h3[0][0])
+        l_slope = (l3[-1][1] - l3[0][1]) / max(1, l3[-1][0] - l3[0][0])
+        upper_now = h3[-1][1] + h_slope * (len(c1) - 1 - h3[-1][0])
+        lower_now = l3[-1][1] + l_slope * (len(c1) - 1 - l3[-1][0])
+        if h_slope > 0 and l_slope > h_slope and last["c"] < lower_now - 0.08 * atr:
+            out.append({"name": "Cuña ascendente", "dir": "bear", "level": lower_now, "reason": "directrices ascendentes convergentes y ruptura inferior"})
+        elif h_slope < 0 and l_slope < h_slope and last["c"] > upper_now + 0.08 * atr:
+            out.append({"name": "Cuña descendente", "dir": "bull", "level": upper_now, "reason": "directrices descendentes convergentes y ruptura superior"})
+
+    # Elimina duplicados conservando el patrón más reciente de cada tipo/dirección.
+    unique = {}
+    for item in out:
+        unique[(item["name"], item["dir"])] = item
+    return list(unique.values())
+
+
+def tech_pending_zone_setup(name, cfg, zones, c1, bias, atr, patterns, now):
+    """Construye una configuración pendiente a partir de zona H1 fresca y contexto H4."""
+    direction = bias.get("dir")
+    if direction not in ("bull", "bear") or not atr or not zones or not c1:
+        return None
+    price = c1[-1]["c"]
+    side = "demand" if direction == "bull" else "supply"
+    candidates = []
+    for z in zones:
+        if z.get("side") != side or z.get("kind") not in ("OB", "FVG") or z.get("visits", 0) != 0:
+            continue
+        entry = (z["low"] + z["high"]) / 2
+        # La zona debe estar delante del precio; no se alerta una zona ya atravesada.
+        gap = (price - entry) if direction == "bull" else (entry - price)
+        if gap < -0.10 * atr or gap > TECH_PENDING_MAX_DISTANCE_ATR * atr:
+            continue
+        # OB preferente como zona operativa; FVG conserva prioridad cuando está reforzado por liquidez.
+        conf = bool(z.get("conf"))
+        priority = (2 if z["kind"] == "OB" else 1) + (2 if conf else 0) - max(gap, 0) / max(atr, 1e-9) * 0.15
+        candidates.append((priority, z, entry, gap))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda x: x[0], reverse=True)
+    _, zone, entry, gap = candidates[0]
+    buffer = max(0.10 * atr, 0.0)
+    invalidation = zone["low"] - buffer if direction == "bull" else zone["high"] + buffer
+    risk = abs(entry - invalidation)
+    risk_atr = risk / atr if atr else 999
+    if risk <= 0 or risk_atr > TECH_MAX_RISK_ATR:
+        return None
+    rng = bias.get("range")
+    pd_ok = True
+    if rng and rng[1] > rng[0]:
+        midpoint = (rng[0] + rng[1]) / 2
+        pd_ok = entry <= midpoint if direction == "bull" else entry >= midpoint
+    matching_patterns = [p for p in patterns if p["dir"] == direction]
+    liq = tech_next_liquidity(c1, entry, "up" if direction == "bull" else "down")
+    ref = {"kind": zone["kind"], "zone": zone, "entry": entry, "inv": invalidation,
+           "risk": risk, "risk_atr": risk_atr, "a1": atr}
+    temp_setup = {"dir": direction, "ref": ref}
+    rr, target = tech_reward_risk(temp_setup, bias, liq)
+    score_parts = {
+        "confluencia OB/FVG + liquidez": bool(zone.get("conf")),
+        "figura chartista H1 confirmada": bool(matching_patterns),
+        "entrada en descuento/premium H4": pd_ok,
+        "R:R mínimo 1:2": rr is not None and rr >= TECH_MIN_RR,
+        "sesión de liquidez": tech_session_bonus(cfg, now),
+    }
+    score = sum(1 for v in score_parts.values() if v)
+    if TECH_REQUIRE_PD and not pd_ok:
+        return None
+    if rr is not None and rr < TECH_MIN_RR:
+        return None
+    if score < TECH_PENDING_MIN_SCORE:
+        return None
+    return {
+        "type": "pending", "dir": direction, "zone": zone, "ref": ref,
+        "entry": entry, "price": price, "gap_atr": max(gap, 0) / atr,
+        "pd_ok": pd_ok, "patterns": matching_patterns, "score": score,
+        "score_max": len(score_parts), "score_parts": score_parts,
+        "rr": rr, "target": target, "liq": liq, "created": now.isoformat(),
+        "expires": (now + timedelta(hours=TECH_PENDING_HOURS)).isoformat(),
+        "bias_label": bias.get("label", ""), "session_label": tech_session_label(cfg, now),
+    }
+
+
+def tech_pending_key(name, setup, cfg):
+    z = setup["zone"]
+    return f"{name}|{setup['dir']}|{z['kind']}|{z['low']:.{cfg['digits']}f}|{z['high']:.{cfg['digits']}f}"
+
+
+def build_tech_pending_alert(name, cfg, setup, bias, price, news_lines, now):
+    digits = cfg["digits"]
+    fmt = lambda x: f"{x:.{digits}f}"
+    bull = setup["dir"] == "bull"
+    zone = setup["zone"]
+    zone_name = "Order Block (OB)" if zone["kind"] == "OB" else "Fair Value Gap (FVG)"
+    patterns = setup.get("patterns") or []
+    pattern_text = ", ".join(p["name"] for p in patterns) if patterns else "Sin figura confirmada; estructura OB/FVG válida"
+    lines = [
+        "🧭 <b>APEXQUANT · CONFIGURACIÓN DETECTADA</b>", "",
+        f"{cfg['emoji']} <b>{escape(name)}</b> · {'🟢 Alcista' if bull else '🔴 Bajista'}",
+        _alert_time_line(now), "",
+        f"📊 <b>H4:</b> {escape(bias.get('label') or 'Sesgo direccional')}",
+        f"🧩 <b>H1 · Zona:</b> {zone_name} ({fmt(zone['low'])} – {fmt(zone['high'])})",
+        f"🎯 <b>Entrada de referencia:</b> {fmt(setup['entry'])} (50% de la zona)",
+        f"🛑 <b>Invalidación:</b> {fmt(setup['ref']['inv'])}",
+        f"📐 <b>Figuras chartistas H1:</b> {escape(pattern_text)}",
+        f"💧 <b>Confluencia:</b> {'OB/FVG relacionado con liquidez H1' if zone.get('conf') else 'zona H1 fresca; sin solape adicional confirmado'}",
+        f"📏 <b>Calidad preliminar:</b> {setup['score']}/{setup['score_max']} · R:R {('1:'+format(setup['rr'], '.1f')) if setup.get('rr') is not None else 'por confirmar'}",
+        "", "⏳ <b>Estado: PENDIENTE</b>",
+        "El precio todavía debe alcanzar la zona. Esta publicación no confirma una entrada.",
+        "La segunda alerta sólo se enviará si M5 valida una reacción y confirmación a favor del escenario.",
+    ]
+    if setup.get("target") is not None:
+        lines.append(f"• Objetivo técnico de referencia: {fmt(setup['target'])}")
+    if news_lines:
+        lines.extend(["", *news_lines])
+    lines.extend(["", TECH_RISK_BASE, f"📌 {escape(cfg['risk'])}", "", '📊 Datos: <a href="https://twelvedata.com">Twelve Data</a>'])
+    return "\n".join(lines)[:4000]
+
+
+def tech_pending_store(name, cfg, setup, now):
+    key = tech_pending_key(name, setup, cfg)
+    pending = TECH_STATE.setdefault("pending", [])
+    pending[:] = [x for x in pending if x.get("key") != key]
+    pending.append({"key": key, "symbol": name, "dir": setup["dir"],
+                    "kind": setup["zone"]["kind"], "low": setup["zone"]["low"],
+                    "high": setup["zone"]["high"], "entry": setup["entry"],
+                    "inv": setup["ref"]["inv"], "created": now.isoformat(),
+                    "expires": setup["expires"], "phase1_sent": True})
+    TECH_STATE["pending"] = pending[-100:]
+
+
+def tech_pending_prune(name, price, now):
+    """Retira configuraciones expiradas o cuyo nivel de invalidación ya fue roto."""
+    kept = []
+    for item in TECH_STATE.setdefault("pending", []):
+        if item.get("symbol") != name:
+            kept.append(item)
+            continue
+        try:
+            if now > datetime.fromisoformat(item.get("expires")):
+                continue
+        except Exception:
+            continue
+        invalid = item.get("inv")
+        if invalid is not None and price is not None:
+            if item.get("dir") == "bull" and price < invalid:
+                continue
+            if item.get("dir") == "bear" and price > invalid:
+                continue
+        kept.append(item)
+    TECH_STATE["pending"] = kept
+
+
+def tech_pending_match(name, setup, now):
+    pending = TECH_STATE.setdefault("pending", [])
+    matched = None
+    kept = []
+    z = setup.get("zone") or (setup.get("ref") or {}).get("zone") or {}
+    for item in pending:
+        try:
+            expiry = datetime.fromisoformat(item.get("expires"))
+            if now > expiry:
+                continue
+        except Exception:
+            continue
+        if item.get("symbol") == name and matched is None:
+            # La confirmación M5 debe pertenecer a la misma zona.
+            same_dir = item.get("dir") == setup.get("dir")
+            overlap = z and z.get("low", 0) <= item.get("high", 0) and z.get("high", 0) >= item.get("low", 0)
+            if same_dir and overlap:
+                matched = item
+                kept.append(item)  # se conserva hasta que Telegram confirme publicación fase 2
+                continue
+        kept.append(item)
+    TECH_STATE["pending"] = kept
+    return matched
 
 
 async def tech_scan_symbol(application, name, force=False):
@@ -7340,23 +7654,63 @@ async def tech_scan_symbol(application, name, force=False):
         return
 
     price = c5[-1]["c"]
+    tech_pending_prune(name, price, now)
     near = tech_price_is_near(rt, price)
     candidates = []
     notes = []
 
     tech_track_update(name, c5, now)
 
+    # FIGURAS CHARTISTAS: detección principal en H1, siempre con velas cerradas.
+    patterns_h1 = tech_detect_chart_patterns_h1(h1_candles, rt.get("a1"))
+    rt["patterns_h1"] = patterns_h1
+
+    # FASE 1: configuración pendiente H4/H1. Se publica antes de exigir el gatillo M5.
+    pending_setup = tech_pending_zone_setup(name, cfg, zones, h1_candles, bias,
+                                             rt.get("a1"), patterns_h1, now)
+    if pending_setup:
+        pkey = tech_pending_key(name, pending_setup, cfg)
+        already = any(x.get("key") == pkey for x in TECH_STATE.get("pending", []))
+        zone_recent = tech_zone_recent(pkey, now)
+        if not already and not zone_recent:
+            pnews = await tech_news_for(cfg, now)
+            if not any(item[2] == "high" and abs(item[1]) <= TECH_NEWS_BLOCK_MINUTES for item in pnews):
+                pnews_lines, _ = tech_news_lines(pnews)
+                ptext = build_tech_pending_alert(name, cfg, pending_setup, bias, price, pnews_lines, now)
+                try:
+                    await tech_publish(application, ptext, tech_tradingview_url(cfg, "60"))
+                    _mark_publish_ok("tecnicas")
+                    tech_pending_store(name, cfg, pending_setup, now)
+                    tech_register_sent(name, f"{pkey}|pending", pending_setup, now, pkey)
+                    tech_state_save()
+                    rt["status"] = f"🟡 configuración pendiente publicada ({pending_setup['score']}/{pending_setup['score_max']})"
+                except Exception as error:
+                    logger.error("No se pudo publicar configuración pendiente de %s: %s", name, error)
+                    rt["status"] = f"⚠️ error al publicar configuración pendiente: {str(error)[:60]}"
+                    await _publish_failed(application, "tecnicas", error)
+
     if bias["dir"] in ("bull", "bear") and zones:
         setup = tech_detect_smc(c5, zones, bias["dir"], rt.get("a1"), diag=notes)
         if setup:
-            tech_score_smc(cfg, setup, bias, price, now)
-
+            # Premium/discount se evalúa sobre la entrada proyectada, no sobre el precio
+            # actual: una venta pendiente puede estar correctamente en premium aunque el
+            # precio ya haya caído lejos de la zona.
+            entry_ref = (setup.get("ref") or {}).get("entry", price)
+            rng = bias.get("range")
+            setup["pd_ok"] = True
+            if rng and rng[1] > rng[0]:
+                midpoint = (rng[0] + rng[1]) / 2
+                setup["pd_ok"] = entry_ref <= midpoint if setup["dir"] == "bull" else entry_ref >= midpoint
             if TECH_REQUIRE_PD and not setup.get("pd_ok"):
-                notes.append(
-                    "el precio no está en " + ("descuento" if setup["dir"] == "bull" else "premium")
-                    + " del rango H4"
-                )
+                notes.append("la entrada proyectada no está en " + ("descuento" if setup["dir"] == "bull" else "premium") + " H4")
             else:
+                matching = [p for p in patterns_h1 if p["dir"] == setup["dir"]]
+                setup["patterns"] = matching
+                tech_score_smc(cfg, setup, bias, price, now)
+                if matching:
+                    setup["score"] += 1
+                    setup["score_max"] += 1
+                    setup["pattern_bonus"] = True
                 candidates.append(setup)
 
     if channel:
@@ -7393,6 +7747,8 @@ async def tech_scan_symbol(application, name, force=False):
 
     candidates.sort(key=lambda s: (s["score"], s["confirm_idx"]), reverse=True)
     setup = candidates[0]
+    pending_match = tech_pending_match(name, setup, now)
+    setup["phase"] = 2 if pending_match else 0
 
     if setup["score"] < TECH_MIN_SCORE:
         rt["status"] += f" · patrón detectado sin confluencias suficientes ({setup['score']}/{setup['score_max']})"
@@ -7423,8 +7779,8 @@ async def tech_scan_symbol(application, name, force=False):
         rt["status"] += f" · patrón descartado: calidad {setup['grade']} (mínimo {TECH_MIN_GRADE})"
         return
 
-    key = f"{name}|{setup['type']}|{setup['dir']}|{setup['confirm_time'].isoformat()}"
-    allowed, reason = tech_can_send(name, key, now)
+    key = f"{name}|phase2|{setup['type']}|{setup['dir']}|{setup['confirm_time'].isoformat()}"
+    allowed, reason = tech_can_send(name, key, now, bypass_cooldown=True)
 
     if not allowed:
         rt["status"] += f" · alerta no enviada: {reason}"
@@ -7432,7 +7788,7 @@ async def tech_scan_symbol(application, name, force=False):
 
     zone_key = tech_zone_key(name, cfg, setup)
 
-    if tech_zone_recent(zone_key, now):
+    if not pending_match and tech_zone_recent(zone_key, now):
         rt["status"] += " · alerta no enviada: esta zona ya se alertó hace poco"
         return
 
@@ -7455,10 +7811,13 @@ async def tech_scan_symbol(application, name, force=False):
         return
 
     _mark_publish_ok("tecnicas")
-    tech_register_sent(name, key, setup, now, zone_key)
+    tech_register_sent(name, key, setup, now, zone_key if not pending_match else None)
+    if pending_match:
+        TECH_STATE["pending"] = [x for x in TECH_STATE.get("pending", []) if x.get("key") != pending_match.get("key")]
     tech_track_open(name, setup, price, now)
     tech_state_save()
-    rt["status"] = f"✅ alerta enviada ({setup['type']}, {setup['dir']})"
+    rt["status"] = ("✅ fase 2 publicada: entrada confirmada" if pending_match else
+                    f"✅ entrada confirmada publicada ({setup['type']}, {setup['dir']})")
     logger.info("🔔 Alerta técnica enviada: %s %s %s", name, setup["type"], setup["dir"])
 
 
@@ -7540,6 +7899,8 @@ async def show_admin_tech(query):
         f"📡 Créditos Twelve Data hoy: <b>{tech_budget_used()}/{TD_DAILY_BUDGET}</b>",
         f"🔔 Alertas hoy: <b>{daily.get('total', 0)}/{TECH_MAX_PER_DAY}</b> "
         f"(máx. {TECH_MAX_PER_SYMBOL_DAY} por activo)",
+        f"⏳ Configuraciones pendientes: <b>{len(TECH_STATE.get('pending', []))}</b>",
+        "🧩 Figuras chartistas: detección H1 con contexto H4",
         f"🎚️ Confluencias mínimas: {TECH_MIN_SCORE} · enfriamiento: {TECH_COOLDOWN_MINUTES} min",
         f"🕒 Horario de análisis (UTC, lun–vie): {TECH_ACTIVE_START_UTC:02d}:00–{TECH_ACTIVE_END_UTC:02d}:00 · BTC 24/7",
         ""
