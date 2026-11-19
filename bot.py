@@ -976,12 +976,8 @@ async def calendar_menu(query):
         ],
         [
             InlineKeyboardButton(
-                "🔴 Alto",
+                "🔴 Sólo alto impacto",
                 callback_data="calendar_high"
-            ),
-            InlineKeyboardButton(
-                "🟠 Medio",
-                callback_data="calendar_medium"
             )
         ],
         [
@@ -1406,7 +1402,7 @@ def _fc_cache_ttl(events):
     now = datetime.now(timezone.utc)
 
     for event in events:
-        if str(event.get("impact") or "").lower() not in ("high", "medium"):
+        if str(event.get("impact") or "").lower() != "high":
             continue
 
         moment = event_datetime_utc(event)
@@ -1498,7 +1494,7 @@ def _smt_normalize_event(raw):
 
 
 def _smt_download_events():
-    """Una sola descarga con todas las divisas disponibles e impactos alto/medio."""
+    """Una sola descarga con todas las divisas e impactos alto/medio para el menú del calendario."""
     params = urlencode({"impact": "high,medium", "days": 30})
     request = Request(
         SHOWMYTRADES_CALENDAR_URL + "?" + params,
@@ -1572,7 +1568,7 @@ async def fetch_calendar_events(start_date, end_date=None, impact=None):
 
     Devuelve una lista ordenada por hora, o None si no hay ni datos guardados.
     Todas las consultas de un mismo rango comparten una sola descarga; el filtro
-    de impacto (high/medium/low) se aplica localmente para gastar menos cuota.
+    de impacto se aplica localmente; ApexQuant sólo muestra alto impacto.
     """
 
     if end_date is None:
@@ -1581,9 +1577,8 @@ async def fetch_calendar_events(start_date, end_date=None, impact=None):
     wanted = str(impact or "").lower()
 
     def pick(events):
-        # Regla única de ApexQuant: nunca mostrar ni publicar impacto bajo.
-        if wanted == "low":
-            return []
+        # El calendario del bot muestra impactos altos y medios.
+        # Las publicaciones automáticas al canal aplican su propio filtro high-only.
         allowed = [
             e for e in events
             if str(e.get("impact") or "").lower() in ("high", "medium")
@@ -1592,7 +1587,10 @@ async def fetch_calendar_events(start_date, end_date=None, impact=None):
             return allowed
         if wanted not in ("high", "medium"):
             return []
-        return [e for e in allowed if str(e.get("impact") or "").lower() == wanted]
+        return [
+            e for e in allowed
+            if str(e.get("impact") or "").lower() == wanted
+        ]
 
     _fc_disk_load()
 
@@ -2607,12 +2605,9 @@ async def show_calendar_mode(query, mode, page=0):
             page=page, mode=mode
         )
 
-    elif mode in ("high", "medium"):
+    elif mode == "high":
         start, end = week_dates()
-        icon, label = {
-            "high": ("🔴", "ALTO"),
-            "medium": ("🟠", "MEDIO")
-        }[mode]
+        icon, label = "🔴", "ALTO"
         await show_events(
             query, start, end,
             title=(
@@ -5203,9 +5198,10 @@ def _env_num(name, default, cast=float):
         return default
 
 
-COMMUNITY_IMPACT_LEVELS = ("high", "medium")
-MEDIUM_IMPACT_ENABLED = _env_flag("MEDIUM_IMPACT_ENABLED", True)
-MEDIUM_IMPACT_MAX_PER_DAY = _env_num("MEDIUM_IMPACT_MAX_PER_DAY", 10, int)
+# El canal publica exclusivamente alto impacto; el menú del calendario conserva alto y medio.
+COMMUNITY_IMPACT_LEVELS = ("high",)
+MEDIUM_IMPACT_ENABLED = False
+MEDIUM_IMPACT_MAX_PER_DAY = 0
 
 
 def _medium_sent_today(seen):
@@ -5224,9 +5220,6 @@ async def community_high_impact_monitor(application):
                 events = []
 
                 for level in COMMUNITY_IMPACT_LEVELS:
-                    if level == "medium" and not MEDIUM_IMPACT_ENABLED:
-                        continue
-
                     batch = await fetch_calendar_events(
                         today - timedelta(days=1),
                         today + timedelta(days=1),
@@ -5258,7 +5251,7 @@ async def community_high_impact_monitor(application):
                     if level not in COMMUNITY_IMPACT_LEVELS:
                         continue
 
-                    if level == "medium" and not MEDIUM_IMPACT_ENABLED:
+                    if level != "high":
                         continue
 
                     moment = event_datetime_utc(event)
@@ -5349,7 +5342,7 @@ async def community_high_impact_monitor(application):
         except asyncio.CancelledError:
             raise
         except Exception as error:
-            logger.error("Error en monitor de eventos (alto/medio impacto): %s", error, exc_info=True)
+            logger.error("Error en monitor de eventos (alto impacto): %s", error, exc_info=True)
             MONITOR_STATUS.setdefault("eventos", {})["last_error"] = f"{type(error).__name__}: {str(error)[:120]}"
 
         await asyncio.sleep(HIGH_IMPACT_CHECK_SECONDS)
@@ -6491,16 +6484,16 @@ def tech_detect_break(c5, channel, bias_dir):
 
 
 # ------------------------------------------------------------
-# Noticias de impacto medio/alto en el momento de la alerta
+# Noticias de alto impacto en el momento de la alerta
 # ------------------------------------------------------------
 
 async def tech_news_for(cfg, now):
-    """Noticias medias/altas de las divisas del activo, sólo si existen en la ventana."""
+    """Sólo noticias de alto impacto para contextualizar alertas técnicas."""
 
     today = now.astimezone(CALENDAR_TZ).date()
     events = []
 
-    for impact in ("high", "medium"):
+    for impact in ("high",):
         try:
             batch = await fetch_calendar_events(today - timedelta(days=1), today + timedelta(days=1), impact=impact)
         except Exception as error:
@@ -6514,7 +6507,7 @@ async def tech_news_for(cfg, now):
     for event in events:
         impact = str(event_value(event, "impact", "importance")).lower()
 
-        if impact not in ("high", "medium"):
+        if impact != "high":
             continue
 
         if event_currency(event).upper() not in cfg["ccy"]:
@@ -7586,6 +7579,7 @@ async def tech_scan_symbol(application, name, force=False):
     cfg = TECH_SYMBOLS[name]
     rt = TECH_RUNTIME.setdefault(name, {})
     now = datetime.now(timezone.utc)
+    logger.info("🔍 ApexQuant inicia análisis de %s", name)
 
     disabled = TECH_STATE["disabled"].get(name)
 
@@ -7739,10 +7733,27 @@ async def tech_scan_symbol(application, name, force=False):
         f"{state_icon} H4 {bias.get('label', '')} · {len(zones)} zonas H1{extra} · "
         f"M5 {'cerca de zona' if near else 'lejos de zonas'}, en espera"
     )
+    rt["last_scan"] = time.time()
+    rt["last_counts"] = {
+        "h4_candles": len(rt.get("h4") or []),
+        "h1_candles": len(h1_candles),
+        "m5_candles": len(c5),
+        "h1_zones": len(zones),
+        "h1_patterns": len(patterns_h1),
+        "pending": len(TECH_STATE.get("pending", [])),
+        "candidates": len(candidates)
+    }
+    logger.info(
+        "📊 ApexQuant %s | H4=%s | velas H1=%d M5=%d | zonas H1=%d | figuras H1=%d | "
+        "pendientes=%d | candidatos M5=%d",
+        name, bias.get("label", "neutral"), len(h1_candles), len(c5), len(zones),
+        len(patterns_h1), len(TECH_STATE.get("pending", [])), len(candidates)
+    )
 
     if not candidates:
         if notes:
             rt["status"] += " · patrón descartado: " + "; ".join(list(dict.fromkeys(notes))[:2])
+        logger.info("🔎 ApexQuant %s | sin candidato publicable | %s", name, rt["status"])
         return
 
     candidates.sort(key=lambda s: (s["score"], s["confirm_idx"]), reverse=True)
@@ -8357,7 +8368,7 @@ async def assistant_calendar_context(question):
                 continue
             currency = event_currency(event) or "N/D"
             impact = str(event_value(event, "impact", "importance") or "N/D")
-            if (next_week or max_rows > 12) and impact.lower() not in ("high", "alto", "alta", "3", "medium", "medio", "media", "2"):
+            if impact.lower() not in ("high", "alto", "alta", "3"):
                 continue
             dt = str(event_value(event, "time_utc", "datetime", "date") or "")
             rows.append(f"- {dt} | {impact.upper()} | {currency} | {name}")
@@ -8978,9 +8989,6 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if data == "calendar_currency":
             await currency_events(query)
             return
-        if data == "calendar_medium":
-            await show_calendar_medium(query)
-            return
         if data == "calendar_low":
             await show_calendar_low(query)
             return
@@ -9300,6 +9308,21 @@ async def admin_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Twelve Data: {tech_budget_used()}/{TD_DAILY_BUDGET} créditos hoy · "
         f"alertas técnicas {'activadas' if TECH_STATE.get('enabled', True) else 'DESACTIVADAS'}"
     )
+    lines.append("\n<b>Diagnóstico por instrumento</b>")
+    for symbol, cfg in TECH_SYMBOLS.items():
+        rt = TECH_RUNTIME.get(symbol, {})
+        status_text = rt.get("status", "sin análisis todavía")
+        counts = rt.get("last_counts") or {}
+        count_text = (
+            f" · velas H1/M5 {counts.get('h1_candles', 0)}/{counts.get('m5_candles', 0)}"
+            f" · zonas {counts.get('h1_zones', 0)}"
+            f" · figuras {counts.get('h1_patterns', 0)}"
+            if counts else ""
+        )
+        lines.append(
+            f"• {cfg['emoji']} <b>{escape(symbol)}</b>: {escape(status_text)}"
+            f"{escape(count_text)}"
+        )
 
     await update.message.reply_text("\n".join(lines), parse_mode="HTML")
 
